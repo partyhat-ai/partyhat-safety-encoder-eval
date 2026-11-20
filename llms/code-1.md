@@ -1,6 +1,6 @@
 # partyhat-safety-encoder-eval: source and docs, part 1 of 7
 
-Generated from commit `ca598a68c892` (2026-11-20) of github.com/partyhat-ai/partyhat-safety-encoder-eval by `scripts/llms_digest.py`, which `.github/workflows/llms-digest.yml` reruns on every push to `main`, so this text matches the code at that commit.
+Generated from commit `d251619f4822` (2026-11-20) of github.com/partyhat-ai/partyhat-safety-encoder-eval by `scripts/llms_digest.py`, which `.github/workflows/llms-digest.yml` reruns on every push to `main`, so this text matches the code at that commit.
 Files `.github/workflows/llms-digest.yml` to `evidence/README.md`. Lines are numbered as in the repository.
 
 ## `.github/workflows/llms-digest.yml`
@@ -90,7 +90,7 @@ Files `.github/workflows/llms-digest.yml` to `evidence/README.md`. Lines are num
     2| 
     3| By Cameron Feather at Partyhat. These scripts recompute the figures on the
     4| [partyhat-safety-encoder 2.0 model card](https://huggingface.co/partyhat-hf/partyhat-safety-encoder) from the
-    5| evidence bundle, which is in this repository's [`evidence/`](evidence/) folder (a byte-identical copy of the one on
+    5| evidence bundle, which is in this repository's [`evidence/`](https://github.com/partyhat-ai/partyhat-safety-encoder-eval/tree/main/evidence) folder (a byte-identical copy of the one on
     6| Hugging Face; every file's sha256 is in [`evidence/MANIFEST.md`](evidence/MANIFEST.md)). The bundle holds a per-item scorecard for release 2.0 and
     7| for each model the card compares it with, and the development-set scorecards that set release 2.0's thresholds and
     8| back the card's "Where the gain came from" section: row index, label, score, margin and decision, with no prompt text.

@@ -1,6 +1,6 @@
 # partyhat-safety-encoder-eval: file map
 
-Generated from commit `ca598a68c892` (2026-11-20) of github.com/partyhat-ai/partyhat-safety-encoder-eval by `scripts/llms_digest.py`, which `.github/workflows/llms-digest.yml` reruns on every push to `main`, so this text matches the code at that commit.
+Generated from commit `d251619f4822` (2026-11-20) of github.com/partyhat-ai/partyhat-safety-encoder-eval by `scripts/llms_digest.py`, which `.github/workflows/llms-digest.yml` reruns on every push to `main`, so this text matches the code at that commit.
 
 244 tracked files. 43 are reproduced in full in the `code-N.md` parts; the rest are listed with the reason they are not.
 
@@ -11,7 +11,7 @@ Every path below is relative to https://raw.githubusercontent.com/partyhat-ai/pa
 | `.github/workflows/llms-digest.yml` | 1,287 | 40 | Keeps llms.txt and llms/ (a plain-text copy of this repository for tools that | code-1.md |
 | `.gitignore` | 51 | 4 |  | code-1.md |
 | `LICENSE` | 1,065 | 21 |  | code-1.md |
-| `README.md` | 7,154 | 107 | partyhat-safety-encoder 2.0: evaluation scripts and training code | code-1.md |
+| `README.md` | 7,223 | 107 | partyhat-safety-encoder 2.0: evaluation scripts and training code | code-1.md |
 | `attach_labels.py` | 7,091 | 165 | attach_labels.py: rebuild the item labels stripped from the evidence bundle, from the public dataset | code-1.md |
 | `baselines/README.md` | 5,036 | 69 | How each comparison model was scored | code-1.md |
 | `dev_ablation.py` | 33,567 | 540 | dev_ablation.py: recompute the "Where the gain came from" section of the partyhat-safety-encoder 2.0 | code-1.md |
