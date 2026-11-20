@@ -1,8 +1,55 @@
 # partyhat-safety-encoder-eval: data samples
 
-Generated from commit `db871f95055f` (2026-11-20) of github.com/partyhat-ai/partyhat-safety-encoder-eval by `scripts/llms_digest.py`, which `.github/workflows/llms-digest.yml` reruns on every push to `main`, so this text matches the code at that commit.
+Generated from commit `ca598a68c892` (2026-11-20) of github.com/partyhat-ai/partyhat-safety-encoder-eval by `scripts/llms_digest.py`, which `.github/workflows/llms-digest.yml` reruns on every push to `main`, so this text matches the code at that commit.
 
 Data files are not reproduced in full. One sample per top-level folder, first 40 lines:
+
+## `evidence/` (200 files)
+
+Sample: `evidence/latency/qwen3guard_gen_0.6b_A10G_bf16.json`
+
+```json
+{
+ "gpu": "NVIDIA A10G",
+ "engine": "transformers",
+ "bf16": {
+  "128": {
+   "total_input_tokens": 417,
+   "decision": {
+    "cold_ms": 1383.7,
+    "bs1": {
+     "n": 1000,
+     "p50": 109.94,
+     "p95": 113.74,
+     "p99": 115.91,
+     "mean": 109.8
+    },
+    "batches": {
+     "1": {
+      "p95_ms": 117.8,
+      "items_per_s": 8.9
+     },
+     "8": {
+      "p95_ms": 248.5,
+      "items_per_s": 32.9
+     },
+     "16": {
+      "p95_ms": 366.05,
+      "items_per_s": 44.4
+     },
+     "32": {
+      "p95_ms": 602.49,
+      "items_per_s": 53.4
+     },
+     "64": {
+      "p95_ms": 1137.78,
+      "items_per_s": 56.4
+     }
+    },
+    "best_batch_at_p95_target": null,
+    "items_per_s_at_target": null,
+    "items_per_s_unconstrained": 56.4,
+```
 
 ## `training/` (1 files)
 
