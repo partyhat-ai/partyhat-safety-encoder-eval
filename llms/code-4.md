@@ -1,7 +1,274 @@
 # partyhat-safety-encoder-eval: source and docs, part 4 of 5
 
-Generated from commit `2de96ea8c68b` (2026-11-20) of github.com/partyhat-ai/partyhat-safety-encoder-eval. Regenerate whenever the code changes.
-Files `training/test_v6_build.py` to `training/v6_data.py`. Lines are numbered as in the repository.
+Generated from commit `8a6580168441` (2026-11-20) of github.com/partyhat-ai/partyhat-safety-encoder-eval by `scripts/llms_digest.py`, which `.github/workflows/llms-digest.yml` reruns on every push to `main`, so this text matches the code at that commit.
+Files `training/test_v6_bow.py` to `training/v6_build.py`. Lines are numbered as in the repository.
+
+## `training/test_v6_bow.py`
+
+```python
+    1| """Tests for the bag-of-words correction (recipe variant R2) in train.py and its cross-fit script.
+    2| 
+    3| Run from the directory that holds train.py and v6_bow_crossfit.py:
+    4|     python3 -m pytest -q test_v6_bow.py
+    5| CPU only. Builds a tiny random DeBERTa; downloads nothing.
+    6| """
+    7| import json
+    8| import pathlib
+    9| import sys
+   10| 
+   11| import numpy as np
+   12| import torch
+   13| import torch.nn.functional as F
+   14| 
+   15| ROOT = pathlib.Path(__file__).parent
+   16| sys.path.insert(0, str(ROOT))
+   17| 
+   18| 
+   19| def tiny_tokenizer():
+   20|     from tokenizers import Tokenizer, models, pre_tokenizers
+   21|     from transformers import PreTrainedTokenizerFast
+   22|     vocab = {"[PAD]": 0, "[UNK]": 1, "[CLS]": 2, "[SEP]": 3}
+   23|     for i in range(40):
+   24|         vocab[f"w{i}"] = len(vocab)
+   25|     tk = Tokenizer(models.WordLevel(vocab=vocab, unk_token="[UNK]"))
+   26|     tk.pre_tokenizer = pre_tokenizers.Whitespace()
+   27|     return PreTrainedTokenizerFast(tokenizer_object=tk, pad_token="[PAD]", unk_token="[UNK]",
+   28|                                    cls_token="[CLS]", sep_token="[SEP]")
+   29| 
+   30| 
+   31| def tiny_model(seed=0):
+   32|     from transformers import DebertaV2Config, DebertaV2ForSequenceClassification
+   33|     torch.manual_seed(seed)
+   34|     cfg = DebertaV2Config(vocab_size=64, hidden_size=32, num_hidden_layers=2,
+   35|                           num_attention_heads=2, intermediate_size=64,
+   36|                           max_position_embeddings=64, num_labels=2, pad_token_id=0)
+   37|     return DebertaV2ForSequenceClassification(cfg)
+   38| 
+   39| 
+   40| def tiny_batch(n=16, seed=0, soft=True, bow=None):
+   41|     from datasets import Dataset
+   42|     from transformers import DataCollatorWithPadding
+   43|     tok = tiny_tokenizer()
+   44|     rng = np.random.default_rng(seed)
+   45|     texts = [" ".join(f"w{j}" for j in rng.integers(0, 40, rng.integers(3, 12))) for _ in range(n)]
+   46|     labels = rng.integers(0, 2, n).tolist()
+   47|     d = {"user_input": texts, "labels": labels}
+   48|     if soft:
+   49|         d["soft_labels"] = [0.95 if y else 0.05 for y in labels]
+   50|     if bow is not None:
+   51|         d["bow_logit"] = [float(v) for v in bow]
+   52|     ds = Dataset.from_dict(d).map(lambda b: tok(b["user_input"], truncation=True, max_length=32),
+   53|                                   batched=True, remove_columns=["user_input"])
+   54|     return DataCollatorWithPadding(tok)([ds[i] for i in range(n)])
+   55| 
+   56| 
+   57| def bare_trainer(weights=(1.0, 1.0), rdrop=0.0):
+   58|     from train import WeightedLossTrainer
+   59|     tr = WeightedLossTrainer.__new__(WeightedLossTrainer)
+   60|     tr.loss_type, tr.focal_gamma, tr.rdrop_alpha = "weighted_ce", 2.0, rdrop
+   61|     tr.class_weights = torch.tensor(list(weights))
+   62|     tr.model_accepts_loss_kwargs = False
+   63|     return tr
+   64| 
+   65| 
+   66| def train_mode_no_dropout(model):
+   67|     model.train()
+   68|     for m in model.modules():
+   69|         if isinstance(m, torch.nn.Dropout) or "Dropout" in type(m).__name__:
+   70|             m.p = 0.0
+   71|             if hasattr(m, "drop_prob"):
+   72|                 m.drop_prob = 0.0
+   73|     return model
+   74| 
+   75| 
+   76| def clone(batch, drop=()):
+   77|     return {k: v.clone() for k, v in batch.items() if k not in drop}
+   78| 
+   79| 
+   80| def test_zero_bow_equals_no_bow_soft_and_hard_paths():
+   81|     """With b = 0 everywhere the loss equals the base recipe's (R1) to 1e-6."""
+   82|     from train import WeightedLossTrainer
+   83|     model = train_mode_no_dropout(tiny_model(1))
+   84|     for soft in (True, False):
+   85|         batch = tiny_batch(soft=soft, bow=np.zeros(16))
+   86|         assert batch["bow_logit"].dtype.is_floating_point
+   87|         tr = bare_trainer()
+   88|         with torch.no_grad():
+   89|             with_b = WeightedLossTrainer.compute_loss(tr, model, clone(batch))
+   90|             without = WeightedLossTrainer.compute_loss(tr, model, clone(batch, drop=("bow_logit",)))
+   91|         assert torch.allclose(with_b, without, atol=1e-6, rtol=0), (soft, with_b.item(), without.item())
+   92| 
+   93| 
+   94| def test_bow_shift_matches_manual_loss_and_outputs_stay_raw():
+   95|     from train import WeightedLossTrainer
+   96|     model = train_mode_no_dropout(tiny_model(2))
+   97|     rng = np.random.default_rng(3)
+   98|     b = rng.normal(0, 2.5, 16)
+   99|     batch = tiny_batch(soft=True, bow=b)
+  100|     tr = bare_trainer(weights=(0.57, 4.07))
+  101|     with torch.no_grad():
+  102|         loss, out = WeightedLossTrainer.compute_loss(tr, model, clone(batch), return_outputs=True)
+  103|         feats = clone(batch, drop=("labels", "soft_labels", "bow_logit"))
+  104|         raw = model(**feats).logits
+  105|         bt = batch["bow_logit"].to(raw.dtype)
+  106|         manual = tr._soft_loss(raw + torch.stack([-0.5 * bt, 0.5 * bt], dim=1),
+  107|                                batch["soft_labels"], tr.class_weights)
+  108|     assert torch.allclose(loss, manual, atol=1e-6, rtol=0), (loss.item(), manual.item())
+  109|     assert torch.allclose(out.logits, raw, atol=1e-6), "outputs must carry the raw logits"
+  110|     with torch.no_grad():
+  111|         plain = WeightedLossTrainer.compute_loss(tr, model, clone(batch, drop=("bow_logit",)))
+  112|     assert abs(loss.item() - plain.item()) > 1e-4, "a non-zero b must change the training loss"
+  113| 
+  114| 
+  115| def test_bow_is_ignored_in_eval_mode():
+  116|     from train import WeightedLossTrainer
+  117|     model = tiny_model(4).eval()
+  118|     batch = tiny_batch(soft=False, bow=np.full(16, 5.0))
+  119|     tr = bare_trainer()
+  120|     with torch.no_grad():
+  121|         with_b = WeightedLossTrainer.compute_loss(tr, model, clone(batch))
+  122|         without = WeightedLossTrainer.compute_loss(tr, model, clone(batch, drop=("bow_logit",)))
+  123|     assert torch.allclose(with_b, without, atol=1e-7, rtol=0)
+  124| 
+  125| 
+  126| def test_gradient_shrinks_where_the_bag_of_words_already_explains_the_label():
+  127|     """The point of the correction: rows the keyword expert gets right push the encoder less."""
+  128|     from train import WeightedLossTrainer
+  129|     grads = {}
+  130|     for name, sign in (("agrees", 1.0), ("zero", 0.0), ("disagrees", -1.0)):
+  131|         model = train_mode_no_dropout(tiny_model(5))
+  132|         batch = tiny_batch(soft=False, bow=np.zeros(16), seed=7)
+  133|         y = batch["labels"].float()
+  134|         batch["bow_logit"] = sign * 4.0 * (2 * y - 1)  # +4 toward the true class, or away from it
+  135|         tr = bare_trainer()
+  136|         model.zero_grad()
+  137|         WeightedLossTrainer.compute_loss(tr, model, clone(batch)).backward()
+  138|         grads[name] = float(model.classifier.weight.grad.norm())
+  139|     assert grads["agrees"] < grads["zero"] < grads["disagrees"], grads
+  140| 
+  141| 
+  142| def test_rdrop_path_still_runs_with_bow():
+  143|     from train import WeightedLossTrainer
+  144|     model = train_mode_no_dropout(tiny_model(6))
+  145|     batch = tiny_batch(soft=True, bow=np.linspace(-3, 3, 16))
+  146|     tr = bare_trainer(rdrop=0.5)
+  147|     with torch.no_grad():
+  148|         loss = WeightedLossTrainer.compute_loss(tr, model, clone(batch))
+  149|     assert torch.isfinite(loss)
+  150| 
+  151| 
+  152| def _write(path, rows):
+  153|     with open(path, "w") as f:
+  154|         for r in rows:
+  155|             f.write(json.dumps(r) + "\n")
+  156| 
+  157| 
+  158| def test_crossfit_script(tmp_path):
+  159|     import v6_bow_crossfit as cf
+  160|     rng = np.random.default_rng(0)
+  161|     scary, bland = [f"s{i}" for i in range(30)], [f"b{i}" for i in range(30)]
+  162| 
+  163|     def row(y):
+  164|         # unsafe rows lean on the "scary" vocabulary, so a unigram model can predict the label
+  165|         pool = scary if (rng.random() < (0.85 if y else 0.15)) else bland
+  166|         return {"user_input": " ".join(rng.choice(pool, 8)), "toxicity": int(y), "keep": "x"}
+  167| 
+  168|     a = [row(i % 2) for i in range(400)]
+  169|     a[1] = dict(a[0])  # an exact duplicate, to check that duplicates share a fold
+  170|     b = [row(0) for _ in range(120)]  # a single-class pool, like FalseReject
+  171|     pa, pb = tmp_path / "pa.jsonl", tmp_path / "pb.jsonl"
+  172|     _write(pa, a)
+  173|     _write(pb, b)
+  174|     out = tmp_path / "out"
+  175|     rep = cf.main(["--inputs", str(pa), str(pb), str(pa), "--out_dir", str(out), "--clip", "6"])
+  176|     ra = [json.loads(l) for l in open(out / "pa.jsonl")]
+  177|     rb = [json.loads(l) for l in open(out / "pb.jsonl")]
+  178|     assert len(ra) == len(a) and len(rb) == len(b), "a path given twice is processed once"
+  179|     assert all("bow_logit" in r and r["keep"] == "x" for r in ra + rb)
+  180|     assert [r["user_input"] for r in ra] == [r["user_input"] for r in a], "row order is kept"
+  181|     vals = np.array([r["bow_logit"] for r in ra + rb])
+  182|     assert np.isfinite(vals).all() and np.abs(vals).max() <= 6.0
+  183|     assert ra[0]["bow_logit"] == ra[1]["bow_logit"], "duplicates must share a fold and so a score"
+  184|     assert rep["auroc_overall"] > 0.8 and rep["per_file"]["pb.jsonl"]["auroc"] is None
+  185|     ya = np.array([r["toxicity"] for r in ra])
+  186|     va = np.array([r["bow_logit"] for r in ra])
+  187|     assert va[ya == 1].mean() > va[ya == 0].mean()
+  188| 
+  189| 
+  190| def test_main_end_to_end_with_the_v6_flags(tmp_path, monkeypatch):
+  191|     """The release training command line (plus the R2 field) runs end to end on a tiny model:
+  192|     loader rows + a file listed twice + a file with soft targets and bow_logit, grouped by length,
+  193|     one evaluation at the last step, final checkpoint kept."""
+  194|     import types
+  195| 
+  196|     import pandas as pd
+  197| 
+  198|     import train
+  199|     monkeypatch.setattr(torch.backends.mps, "is_available", lambda: False)
+  200|     rng = np.random.default_rng(0)
+  201| 
+  202|     def text():
+  203|         return " ".join(f"w{j}" for j in rng.integers(0, 40, rng.integers(3, 12)))
+  204| 
+  205|     def frame(n):
+  206|         y = np.arange(n) % 2
+  207|         return pd.DataFrame({"user_input": [text() for _ in range(n)], "toxicity": y})
+  208| 
+  209|     monkeypatch.setattr(train, "load_train_val",
+  210|                         lambda val_fraction=0.1, seed=13, max_samples=None: (frame(24), frame(16)))
+  211|     monkeypatch.setattr(train, "AutoTokenizer",
+  212|                         types.SimpleNamespace(from_pretrained=lambda *a, **k: tiny_tokenizer()))
+  213|     monkeypatch.setattr(train, "AutoModelForSequenceClassification",
+  214|                         types.SimpleNamespace(from_pretrained=lambda *a, **k: tiny_model(0)))
+  215|     plain = [{"user_input": text(), "toxicity": int(i % 2)} for i in range(10)]
+  216|     rich = [{"user_input": text(), "toxicity": int(i % 2),
+  217|              "toxicity_soft": 0.95 if i % 2 else 0.05, "bow_logit": float(rng.normal(0, 2))}
+  218|             for i in range(20)]
+  219|     p_plain, p_rich = tmp_path / "p1_copy.jsonl", tmp_path / "p3.jsonl"
+  220|     _write(p_plain, plain)
+  221|     _write(p_rich, rich)
+  222|     out, meta_path = tmp_path / "out", tmp_path / "meta.json"
+  223|     monkeypatch.setattr(sys, "argv", [
+  224|         "train.py", "--model", "tiny", "--output_dir", str(out),
+  225|         "--extra_train_jsonl", str(p_plain), str(p_plain), str(p_rich),
+  226|         "--soft_label_field", "toxicity_soft", "--bow_logit_field", "bow_logit",
+  227|         "--loss", "weighted_ce", "--class_weights", "1.0,1.0",
+  228|         "--lr", "1e-3", "--batch_size", "4", "--grad_accum", "1", "--max_len", "32",
+  229|         "--rdrop_alpha", "0", "--allow_tf32", "--group_by_length",
+  230|         "--max_steps", "6", "--eval_steps", "6",
+  231|         "--seed", "13", "--head_seed", "13", "--split_seed", "13", "--run_meta", str(meta_path)])
+  232|     train.main()
+  233|     meta = json.load(open(meta_path))
+  234|     assert meta["global_step"] == 6 and meta["best_checkpoint_step"] == 6
+  235|     assert meta["train_rows"] == 24 + 2 * len(plain) + len(rich)
+  236|     assert meta["soft_targets"] and meta["bow_residual"] and meta["group_by_length"]
+  237|     assert all(np.isfinite(h["loss"]) for h in meta["log_history"] if "loss" in h)
+  238|     assert (out / "model.safetensors").exists() or (out / "pytorch_model.bin").exists()
+  239| 
+  240| 
+  241| def test_missing_soft_target_is_refused(tmp_path, monkeypatch):
+  242|     """A row without its soft target must stop the run instead of becoming a NaN loss."""
+  243|     import types
+  244| 
+  245|     import pandas as pd
+  246|     import pytest
+  247| 
+  248|     import train
+  249|     monkeypatch.setattr(torch.backends.mps, "is_available", lambda: False)
+  250|     df = pd.DataFrame({"user_input": ["w1 w2 w3"] * 8, "toxicity": [0, 1] * 4})
+  251|     monkeypatch.setattr(train, "load_train_val",
+  252|                         lambda val_fraction=0.1, seed=13, max_samples=None: (df, df))
+  253|     monkeypatch.setattr(train, "AutoTokenizer",
+  254|                         types.SimpleNamespace(from_pretrained=lambda *a, **k: tiny_tokenizer()))
+  255|     bad = tmp_path / "bad.jsonl"
+  256|     _write(bad, [{"user_input": "w1 w2", "toxicity": 1, "toxicity_soft": 0.95},
+  257|                  {"user_input": "w3 w4", "toxicity": 0}])
+  258|     monkeypatch.setattr(sys, "argv", ["train.py", "--output_dir", str(tmp_path / "o"),
+  259|                                       "--extra_train_jsonl", str(bad),
+  260|                                       "--soft_label_field", "toxicity_soft"])
+  261|     with pytest.raises(SystemExit):
+  262|         train.main()
+```
 
 ## `training/test_v6_build.py`
 
@@ -1851,344 +2118,4 @@ Files `training/test_v6_build.py` to `training/v6_data.py`. Lines are numbered a
   662|     man["r3_rows"] = write_jsonl(f"{out_root}/r3/r3_rows.jsonl", rows)
   663|     man["r3_rows"]["per_pool"] = dict(Counter(r["pool"] for r in rows))
   664|     return man
-```
-
-## `training/v6_committee_targets.py`
-
-```python
-    1| #!/usr/bin/env python3
-    2| """v6_committee_targets.py: turns the teacher committee's verdicts into training labels for recipe
-    3| variant R3 (base recipe + teacher labels). This is the CPU half; the Modal half scores the rows.
-    4| 
-    5| Turns committee margins into training targets. It does no model inference: the committee scorer
-    6| (r3_committee/r3_committee_modal.py) scores rows on Modal and hands this script one margin file per member.
-    7| 
-    8| Inputs (JSONL):
-    9|   --rows   R3's rows: row_id, user_input, pool, toxicity (0/1, or null when the row has no source
-   10|            label), toxicity_soft (the pool's soft target, or null when there is no source label)
-   11|   --member NAME=path   repeated; rows of {row_id, margin}. The margin is the verdict-token margin,
-   12|            unsafe minus safe (for Qwen3Guard: Unsafe against Safe-or-Controversial). Rows the member
-   13|            did not score are simply absent.
-   14|   --calib  NAME=path   repeated; rows of {margin, y} for that member on tc_val + aegis_val.
-   15| 
-   16| Rules:
-   17|   * each member is Platt-scaled on its calibration rows; the committee log-odds is the mean of the
-   18|     calibrated log-odds over the members that scored the row; p_c is its sigmoid;
-   19|   * a row needs at least --min_members (default 2) members to count as scored;
-   20|   * source label kept, unless p_c >= 0.9 on a row labelled safe or p_c <= 0.1 on a row labelled
-   21|     unsafe: then the label is disputed and the target is 0.5;
-   22|   * no source label: target = p_c clipped to [0.02, 0.98], toxicity = 1 when p_c >= 0.5;
-   23|   * a source-labelled row that was not scored keeps its target; an unlabelled row that was not
-   24|     scored is dropped (there is nothing to train it on).
-   25| 
-   26| Output: --out (JSONL: every kept row with toxicity, toxicity_soft, p_c, target_rule) and
-   27| --report (JSON: counts per pool, Platt parameters). Prints the report; never prints text.
-   28| A disputed label is recorded as target_rule "clash" and counted in clash_rows; those names are
-   29| kept because the stored files use them.
-   30| A member whose Platt slope is not positive stops the run: its margin has the wrong sign.
-   31| """
-   32| import argparse
-   33| import json
-   34| from collections import Counter, defaultdict
-   35| 
-   36| import numpy as np
-   37| 
-   38| 
-   39| def read_jsonl(path):
-   40|     with open(path) as f:
-   41|         return [json.loads(line) for line in f if line.strip()]
-   42| 
-   43| 
-   44| def platt(margins, y):
-   45|     """Return (a, b) with calibrated log-odds = a * margin + b."""
-   46|     from sklearn.linear_model import LogisticRegression
-   47|     m, y = np.asarray(margins, float).reshape(-1, 1), np.asarray(y, int)
-   48|     if not (np.isfinite(m).all() and 0 < y.sum() < len(y)):
-   49|         raise SystemExit("calibration rows need finite margins and both classes")
-   50|     # Fit on the standardised margin, then convert back: the fit is then the same whatever scale a
-   51|     # member's logits live on.
-   52|     mu, sd = float(m.mean()), float(m.std()) or 1.0
-   53|     clf = LogisticRegression(C=1e6, max_iter=5000, tol=1e-8).fit((m - mu) / sd, y)
-   54|     a = float(clf.coef_[0, 0]) / sd
-   55|     return a, float(clf.intercept_[0]) - a * mu
-   56| 
-   57| 
-   58| def build_targets(rows, member_margins, calib, min_members=2, hi=0.9, lo=0.1, clip=(0.02, 0.98)):
-   59|     """rows: list of dicts. member_margins: {name: {row_id: margin}}. calib: {name: (margins, y)}."""
-   60|     params = {}
-   61|     for name, (m, y) in calib.items():
-   62|         a, b = platt(m, y)
-   63|         if a <= 0:
-   64|             raise SystemExit(f"member {name}: Platt slope {a:.4f} is not positive; the margin's sign is wrong")
-   65|         params[name] = {"a": a, "b": b, "n_calib": int(len(y))}
-   66|     missing = set(member_margins) - set(params)
-   67|     if missing:
-   68|         raise SystemExit(f"members without calibration rows: {sorted(missing)}")
-   69|     out, counts = [], defaultdict(Counter)
-   70|     for r in rows:
-   71|         rid, pool = r["row_id"], r.get("pool", "?")
-   72|         lods = [params[n]["a"] * mm[rid] + params[n]["b"] for n, mm in member_margins.items() if rid in mm]
-   73|         scored = len(lods) >= min_members
-   74|         p_c = float(1.0 / (1.0 + np.exp(-np.mean(lods)))) if scored else None
-   75|         y = r.get("toxicity")
-   76|         new = dict(r)
-   77|         if y is None:
-   78|             if not scored:
-   79|                 counts[pool]["dropped_unlabelled_unscored"] += 1
-   80|                 continue
-   81|             new["toxicity"] = int(p_c >= 0.5)
-   82|             new["toxicity_soft"] = float(min(max(p_c, clip[0]), clip[1]))
-   83|             rule = "committee"
-   84|             counts[pool]["committee_unsafe" if p_c >= 0.5 else "committee_safe"] += 1
-   85|         else:
-   86|             y = int(y)
-   87|             base = r.get("toxicity_soft")
-   88|             new["toxicity"] = y
-   89|             new["toxicity_soft"] = float(y) if base is None else float(base)
-   90|             rule = "source" if scored else "source_unscored"
-   91|             if scored and ((y == 0 and p_c >= hi) or (y == 1 and p_c <= lo)):
-   92|                 new["toxicity_soft"] = 0.5
-   93|                 rule = "clash"
-   94|             counts[pool][rule] += 1
-   95|         new["p_c"], new["target_rule"] = p_c, rule
-   96|         if not 0.0 <= new["toxicity_soft"] <= 1.0:
-   97|             raise SystemExit(f"row {rid}: target {new['toxicity_soft']} is outside [0, 1]")
-   98|         out.append(new)
-   99|     report = {"members": params, "min_members": min_members, "rows_in": len(rows), "rows_out": len(out),
-  100|               "per_pool": {p: dict(c) for p, c in sorted(counts.items())}}
-  101|     unl = sum(c["committee_unsafe"] + c["committee_safe"] for c in counts.values())
-  102|     report["unlabelled_share_unsafe"] = (sum(c["committee_unsafe"] for c in counts.values()) / unl) if unl else None
-  103|     report["clash_rows"] = int(sum(c["clash"] for c in counts.values()))
-  104|     return out, report
-  105| 
-  106| 
-  107| def _pairs(items):
-  108|     out = {}
-  109|     for it in items or []:
-  110|         name, _, path = it.partition("=")
-  111|         if not path:
-  112|             raise SystemExit(f"expected NAME=path, got {it}")
-  113|         out[name] = path
-  114|     return out
-  115| 
-  116| 
-  117| def main(argv=None):
-  118|     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-  119|     p.add_argument("--rows", required=True)
-  120|     p.add_argument("--member", action="append", required=True)
-  121|     p.add_argument("--calib", action="append", required=True)
-  122|     p.add_argument("--out", required=True)
-  123|     p.add_argument("--report", required=True)
-  124|     p.add_argument("--min_members", type=int, default=2)
-  125|     a = p.parse_args(argv)
-  126|     rows = read_jsonl(a.rows)
-  127|     ids = [r["row_id"] for r in rows]
-  128|     if len(set(ids)) != len(ids):
-  129|         raise SystemExit("row_id values are not unique")
-  130|     members = {n: {r["row_id"]: float(r["margin"]) for r in read_jsonl(path)}
-  131|                for n, path in _pairs(a.member).items()}
-  132|     calib = {}
-  133|     for n, path in _pairs(a.calib).items():
-  134|         c = read_jsonl(path)
-  135|         calib[n] = ([float(r["margin"]) for r in c], [int(r["y"]) for r in c])
-  136|     out, report = build_targets(rows, members, calib, a.min_members)
-  137|     with open(a.out, "w") as f:
-  138|         for r in out:
-  139|             f.write(json.dumps(r, ensure_ascii=False) + "\n")
-  140|     with open(a.report, "w") as f:
-  141|         json.dump(report, f, indent=1)
-  142|     print(json.dumps(report, indent=1))
-  143|     return report
-  144| 
-  145| 
-  146| if __name__ == "__main__":
-  147|     main()
-```
-
-## `training/v6_data.py`
-
-```python
-    1| """v6_data.py: source loaders for the v6 training pools, dev sets and decontamination references.
-    2| 
-    3| Runs on Modal only (downloads happen there). Every loader returns plain Python lists/DataFrames;
-    4| nothing here prints or persists text. Revisions are resolved once and recorded in the manifest.
-    5| """
-    6| import csv
-    7| import gzip
-    8| import io
-    9| import json
-   10| 
-   11| import numpy as np
-   12| import pandas as pd
-   13| 
-   14| AEGIS = ("nvidia/Aegis-AI-Content-Safety-Dataset-2.0", "d86bb8bedff51d25ac834ab7838f1cc61acb7a2c")
-   15| WGM = "allenai/wildguardmix"
-   16| WJB = "allenai/wildjailbreak"
-   17| PHTEST = "furonghuang-lab/PHTest"
-   18| HQA = "declare-lab/HarmfulQA"
-   19| CATQA = "declare-lab/CategoricalHarmfulQA"
-   20| JBB = "JailbreakBench/JBB-Behaviors"
-   21| HARMAUG = "hbseong/HarmAug_generated_dataset"
-   22| WILDCHAT = "allenai/WildChat-1M"
-   23| SST = ("Bertievidgen/SimpleSafetyTests", "sst_test_cases.csv",
-   24|        "98223c5d8c4059c8f4d8fe2fec8720ee8a20d3c5")
-   25| HARMBENCH_URL = ("https://raw.githubusercontent.com/centerforaisafety/HarmBench/"
-   26|                  "8e1604d1171fe8a48d8febecd22f600e462bdcdd/data/behavior_datasets/"
-   27|                  "harmbench_behaviors_text_all.csv")
-   28| OPENAI_MOD_REPO = "openai/moderation-api-release"
-   29| OPENAI_MOD_FILE = "data/samples-1680.jsonl.gz"
-   30| OPENAI_MOD_CATS = ("S", "H", "V", "HR", "SH", "S3", "H2", "V2")
-   31| DEBERTA = "microsoft/deberta-v3-large"
-   32| 
-   33| 
-   34| def _api():
-   35|     from huggingface_hub import HfApi
-   36|     return HfApi()
-   37| 
-   38| 
-   39| def revision(repo, repo_type="dataset"):
-   40|     info = _api().repo_info(repo, repo_type=repo_type)
-   41|     return info.sha
-   42| 
-   43| 
-   44| def hub_file(repo, fname, rev=None):
-   45|     from huggingface_hub import hf_hub_download
-   46|     return hf_hub_download(repo, fname, repo_type="dataset", revision=rev)
-   47| 
-   48| 
-   49| def http_bytes(url):
-   50|     import requests
-   51|     r = requests.get(url, timeout=180, headers={"User-Agent": "v6-build"})
-   52|     r.raise_for_status()
-   53|     return r.content
-   54| 
-   55| 
-   56| def github_head(repo):
-   57|     import requests
-   58|     r = requests.get(f"https://api.github.com/repos/{repo}/commits/HEAD", timeout=60,
-   59|                      headers={"User-Agent": "v6-build", "Accept": "application/vnd.github+json"})
-   60|     r.raise_for_status()
-   61|     return r.json()["sha"]
-   62| 
-   63| 
-   64| def _summ(df, label_cols=()):
-   65|     out = {"rows": int(len(df)), "columns": list(map(str, df.columns))}
-   66|     for c in label_cols:
-   67|         if c in df.columns:
-   68|             out[f"counts_{c}"] = {str(k): int(v) for k, v in df[c].value_counts(dropna=False).items()}
-   69|     return out
-   70| 
-   71| 
-   72| # ------------------------------------------------------------------------------------------- #
-   73| # loaders                                                                                       #
-   74| # ------------------------------------------------------------------------------------------- #
-   75| def load_aegis(split_file):
-   76|     data = json.load(open(hub_file(AEGIS[0], split_file, AEGIS[1]), encoding="utf-8"))
-   77|     return pd.DataFrame(data)
-   78| 
-   79| 
-   80| def load_wgm(config):
-   81|     from datasets import load_dataset
-   82|     rev = revision(WGM)
-   83|     ds = load_dataset(WGM, config, revision=rev)
-   84|     split = list(ds.keys())[0]
-   85|     return ds[split].to_pandas(), rev, split
-   86| 
-   87| 
-   88| def load_wjb():
-   89|     rev = revision(WJB)
-   90|     p = hub_file(WJB, "train/train.tsv", rev)
-   91|     df = pd.read_csv(p, sep="\t", keep_default_na=False, dtype=str, quoting=csv.QUOTE_MINIMAL)
-   92|     return df, rev
-   93| 
-   94| 
-   95| def load_hf_any(repo, config=None, rev=None):
-   96|     from datasets import load_dataset
-   97|     rev = rev or revision(repo)
-   98|     ds = load_dataset(repo, config, revision=rev) if config else load_dataset(repo, revision=rev)
-   99|     return {k: v.to_pandas() for k, v in ds.items()}, rev
-  100| 
-  101| 
-  102| def load_openai_mod():
-  103|     sha = github_head(OPENAI_MOD_REPO)
-  104|     raw = http_bytes(f"https://raw.githubusercontent.com/{OPENAI_MOD_REPO}/{sha}/{OPENAI_MOD_FILE}")
-  105|     rows = [json.loads(x) for x in gzip.decompress(raw).decode("utf-8").splitlines() if x.strip()]
-  106|     return rows, sha
-  107| 
-  108| 
-  109| def load_harmbench_std():
-  110|     rows = list(csv.DictReader(io.StringIO(http_bytes(HARMBENCH_URL).decode("utf-8"))))
-  111|     return [r["Behavior"] for r in rows if r["FunctionalCategory"] == "standard"]
-  112| 
-  113| 
-  114| def load_sst():
-  115|     with open(hub_file(*SST), newline="", encoding="utf-8") as f:
-  116|         return [r["prompt"] for r in csv.DictReader(f)]
-  117| 
-  118| 
-  119| # ------------------------------------------------------------------------------------------- #
-  120| # inspection                                                                                    #
-  121| # ------------------------------------------------------------------------------------------- #
-  122| def inspect_all():
-  123|     out = {}
-  124| 
-  125|     def guard(name, fn):
-  126|         try:
-  127|             out[name] = fn()
-  128|         except Exception as e:  # report and keep going
-  129|             out[name] = {"error": repr(e)[:500]}
-  130| 
-  131|     def aegis():
-  132|         from huggingface_hub import list_repo_files
-  133|         files = list_repo_files(AEGIS[0], repo_type="dataset", revision=AEGIS[1])
-  134|         r = {"files": files}
-  135|         for f in ("train.json", "validation.json", "test.json"):
-  136|             if f in files:
-  137|                 r[f] = _summ(load_aegis(f), ["prompt_label"])
-  138|         return r
-  139| 
-  140|     def wgm():
-  141|         r = {}
-  142|         for c in ("wildguardtrain", "wildguardtest"):
-  143|             df, rev, split = load_wgm(c)
-  144|             r[c] = _summ(df, ["prompt_harm_label", "adversarial"]) | {"revision": rev, "split": split}
-  145|         return r
-  146| 
-  147|     def wjb():
-  148|         from huggingface_hub import list_repo_files
-  149|         rev = revision(WJB)
-  150|         files = list_repo_files(WJB, repo_type="dataset", revision=rev)
-  151|         df, _ = load_wjb()
-  152|         r = _summ(df, ["data_type"]) | {"revision": rev, "files": files}
-  153|         r["empty_vanilla"] = int((df["vanilla"].str.len() == 0).sum()) if "vanilla" in df else None
-  154|         r["empty_adversarial"] = (int((df["adversarial"].str.len() == 0).sum())
-  155|                                   if "adversarial" in df else None)
-  156|         return r
-  157| 
-  158|     def generic(repo, config=None, label_cols=()):
-  159|         def f():
-  160|             splits, rev = load_hf_any(repo, config)
-  161|             return {"revision": rev, "splits": {k: _summ(v, label_cols) for k, v in splits.items()}}
-  162|         return f
-  163| 
-  164|     def openai_mod():
-  165|         rows, sha = load_openai_mod()
-  166|         keys = sorted({k for r in rows for k in r})
-  167|         unsafe = sum(1 for r in rows if any(r.get(c) == 1 for c in OPENAI_MOD_CATS))
-  168|         return {"commit": sha, "rows": len(rows), "keys": keys, "unsafe_any_flag": unsafe}
-  169| 
-  170|     guard("aegis", aegis)
-  171|     guard("wildguardmix", wgm)
-  172|     guard("wildjailbreak", wjb)
-  173|     guard("phtest", generic(PHTEST, label_cols=("label", "harmfulness", "category")))
-  174|     guard("harmfulqa", generic(HQA, label_cols=("topic",)))
-  175|     guard("catqa", generic(CATQA, label_cols=("Category",)))
-  176|     guard("jbb", generic(JBB, "behaviors", label_cols=("Category",)))
-  177|     guard("openai_mod", openai_mod)
-  178|     guard("harmbench_std", lambda: {"rows": len(load_harmbench_std())})
-  179|     guard("sst", lambda: {"rows": len(load_sst())})
-  180|     guard("deberta_rev", lambda: revision(DEBERTA, "model"))
-  181|     guard("harmaug_cols", lambda: {"revision": revision(HARMAUG), "files": _api().list_repo_files(
-  182|         HARMAUG, repo_type="dataset")[:20]})
-  183|     return out
 ```

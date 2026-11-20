@@ -1,7 +1,52 @@
 # partyhat-safety-encoder-eval: source and docs, part 1 of 5
 
-Generated from commit `2de96ea8c68b` (2026-11-20) of github.com/partyhat-ai/partyhat-safety-encoder-eval. Regenerate whenever the code changes.
-Files `.gitignore` to `dev_ablation.py`. Lines are numbered as in the repository.
+Generated from commit `8a6580168441` (2026-11-20) of github.com/partyhat-ai/partyhat-safety-encoder-eval by `scripts/llms_digest.py`, which `.github/workflows/llms-digest.yml` reruns on every push to `main`, so this text matches the code at that commit.
+Files `.github/workflows/llms-digest.yml` to `dev_ablation.py`. Lines are numbered as in the repository.
+
+## `.github/workflows/llms-digest.yml`
+
+```yaml
+    1| name: llms digest
+    2| 
+    3| # Keeps llms.txt and llms/ (a plain-text copy of this repository for tools that
+    4| # read text at a URL) matching the code. On every push to main that changes
+    5| # anything besides the digest, it rebuilds them and commits the result. Pushes
+    6| # made with GITHUB_TOKEN don't start workflows, so the commit doesn't loop.
+    7| on:
+    8|   push:
+    9|     branches: [main]
+   10|     paths-ignore: ['llms.txt', 'llms/**']
+   11|   workflow_dispatch:
+   12| 
+   13| concurrency:
+   14|   group: llms-digest
+   15|   cancel-in-progress: false
+   16| 
+   17| permissions:
+   18|   contents: write
+   19| 
+   20| jobs:
+   21|   digest:
+   22|     runs-on: ubuntu-latest
+   23|     steps:
+   24|       - uses: actions/checkout@v4
+   25|         with:
+   26|           fetch-depth: 0  # the history page needs every commit
+   27|       - name: Rebuild
+   28|         run: python3 scripts/llms_digest.py
+   29|       - name: Commit if it changed
+   30|         run: |
+   31|           if [ -z "$(git status --porcelain -- llms.txt llms)" ]; then
+   32|             echo "Digest already matches the code."
+   33|             exit 0
+   34|           fi
+   35|           git config user.name "github-actions[bot]"
+   36|           git config user.email "41898732+github-actions[bot]@users.noreply.github.com"
+   37|           git add llms.txt llms
+   38|           git commit -m "Regenerate llms digest for ${GITHUB_SHA::12}"
+   39|           git pull --rebase --quiet origin main
+   40|           git push origin HEAD:main
+```
 
 ## `.gitignore`
 

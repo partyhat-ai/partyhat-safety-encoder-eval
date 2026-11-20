@@ -1,7 +1,250 @@
 # partyhat-safety-encoder-eval: source and docs, part 3 of 5
 
-Generated from commit `2de96ea8c68b` (2026-11-20) of github.com/partyhat-ai/partyhat-safety-encoder-eval. Regenerate whenever the code changes.
-Files `training/README.md` to `training/test_v6_bow.py`. Lines are numbered as in the repository.
+Generated from commit `8a6580168441` (2026-11-20) of github.com/partyhat-ai/partyhat-safety-encoder-eval by `scripts/llms_digest.py`, which `.github/workflows/llms-digest.yml` reruns on every push to `main`, so this text matches the code at that commit.
+Files `scripts/llms_digest.py` to `training/tc_common.py`. Lines are numbered as in the repository.
+
+## `scripts/llms_digest.py`
+
+```python
+    1| #!/usr/bin/env python3
+    2| """Build llms.txt and llms/: a plain-text copy of this repository for tools that
+    3| read text at a URL rather than cloning (llmstxt.org convention).
+    4| 
+    5|     python3 scripts/llms_digest.py           # write llms.txt and llms/
+    6|     python3 scripts/llms_digest.py --check   # exit 1 if they don't match the code
+    7| 
+    8| .github/workflows/llms-digest.yml runs this on every push to main and commits
+    9| the result, so the text always matches the code at the commit it names.
+   10| Standard library only.
+   11| 
+   12|   llms.txt              index: the README's opening section, then links to everything below
+   13|   llms/MAP.md           every tracked file: size, lines, first descriptive line, digest part
+   14|   llms/HISTORY.md       commit history, verbatim from git (commits that only regenerate
+   15|                         the digest are left out)
+   16|   llms/code-N.md        full text of every source and doc file, line-numbered, in parts
+   17|                         small enough to fetch whole
+   18|   llms/data-samples.md  the first lines of one data file per top-level folder
+   19| """
+   20| from __future__ import annotations
+   21| 
+   22| import argparse
+   23| import os
+   24| import re
+   25| import shutil
+   26| import subprocess
+   27| import sys
+   28| import tempfile
+   29| from pathlib import Path
+   30| 
+   31| PART_CHARS = 120_000
+   32| OWN = ("llms.txt", "llms/")  # this script's output: never part of its own input
+   33| SKIP_DIRS = {"node_modules", "dist", "build", ".svelte-kit", "__pycache__", ".venv", "venv", ".git", ".next"}
+   34| LOCKFILES = {"package-lock.json", "pnpm-lock.yaml", "yarn.lock", "uv.lock", "poetry.lock", "Cargo.lock"}
+   35| DATA_EXT = {".json", ".jsonl", ".csv", ".tsv", ".parquet", ".npy", ".npz", ".arrow", ".pkl"}
+   36| BINARY_EXT = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".woff", ".woff2", ".ttf", ".otf", ".pdf",
+   37|               ".zip", ".gz", ".safetensors", ".bin", ".pt", ".onnx", ".mp4", ".mp3", ".wav"}
+   38| LANG = {".py": "python", ".ts": "ts", ".js": "js", ".svelte": "svelte", ".tf": "hcl", ".sh": "bash",
+   39|         ".md": "markdown", ".yml": "yaml", ".yaml": "yaml", ".toml": "toml", ".json": "json", ".html": "html",
+   40|         ".css": "css", ".txt": "text", ".sql": "sql", ".go": "go", ".rs": "rust"}
+   41| 
+   42| 
+   43| def git(*args: str, cwd: Path) -> str:
+   44|     return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, check=True).stdout
+   45| 
+   46| 
+   47| def first_descriptive_line(text: str, ext: str) -> str:
+   48|     """A file's own first line of description: a docstring, a leading comment, or a heading."""
+   49|     if ext == ".py":
+   50|         m = re.search(r'^\s*(?:#![^\n]*\n)?\s*(?:"""|\'\'\')\s*(.+)', text)
+   51|         if m:
+   52|             return m.group(1).strip().rstrip("\"'")
+   53|     for line in text.splitlines()[:15]:
+   54|         s = line.strip()
+   55|         m = re.match(r"^(?:#{1,6}\s+|//+\s*|#\s*|/\*+\s*|\*\s+|<!--\s*)(.{8,})", s)
+   56|         if m and not s.startswith("#!") and not s.startswith("// @ts"):
+   57|             return m.group(1).strip().rstrip("*/ -").strip()
+   58|     return ""
+   59| 
+   60| 
+   61| def classify(path: str, size: int, raw: bytes) -> str:
+   62|     name, ext = os.path.basename(path), os.path.splitext(path)[1].lower()
+   63|     parts = path.split("/")
+   64|     if any(p in SKIP_DIRS for p in parts[:-1]):
+   65|         return "skip: generated or vendored directory"
+   66|     if name in LOCKFILES:
+   67|         return "skip: lockfile"
+   68|     if ext in BINARY_EXT or b"\0" in raw[:4096]:
+   69|         return "skip: binary"
+   70|     if raw.startswith(b"version https://git-lfs"):
+   71|         return "skip: Git LFS pointer (content not in the repo)"
+   72|     if ext in DATA_EXT and not (len(parts) == 1 and size <= 20_000):  # root configs stay
+   73|         return "data: sampled in data-samples.md"
+   74|     if size > 200_000:
+   75|         return "skip: larger than 200 KB"
+   76|     return "include"
+   77| 
+   78| 
+   79| def repo_identity(root: Path) -> tuple[str, str, str]:
+   80|     """(owner, name, branch) from GitHub Actions, else from the origin remote."""
+   81|     full = os.environ.get("GITHUB_REPOSITORY")
+   82|     if not full:
+   83|         url = git("remote", "get-url", "origin", cwd=root).strip()
+   84|         m = re.search(r"github\.com[:/]([^/]+)/([^/]+?)(?:\.git)?$", url)
+   85|         if not m:
+   86|             sys.exit(f"can't tell the GitHub repository from {url!r}; set GITHUB_REPOSITORY=owner/name")
+   87|         full = f"{m.group(1)}/{m.group(2)}"
+   88|     owner, name = full.split("/", 1)
+   89|     branch = os.environ.get("LLMS_BRANCH", "main")
+   90|     return owner, name, branch
+   91| 
+   92| 
+   93| def build(root: Path, out: Path) -> dict:
+   94|     owner, name, branch = repo_identity(root)
+   95|     sha = git("rev-parse", "HEAD", cwd=root).strip()
+   96|     date = git("log", "-1", "--format=%cs", cwd=root).strip()
+   97|     raw_base = f"https://raw.githubusercontent.com/{owner}/{name}/{branch}/"
+   98|     files = [f for f in git("ls-files", cwd=root).splitlines() if f and not f.startswith(OWN)]
+   99|     stamp = (f"Generated from commit `{sha[:12]}` ({date}) of github.com/{owner}/{name} by "
+  100|              f"`scripts/llms_digest.py`, which `.github/workflows/llms-digest.yml` reruns on every push to "
+  101|              f"`{branch}`, so this text matches the code at that commit.")
+  102| 
+  103|     rows, included, data_dirs = [], [], {}
+  104|     for f in files:
+  105|         raw = (root / f).read_bytes()
+  106|         verdict = classify(f, len(raw), raw)
+  107|         ext = os.path.splitext(f)[1].lower()
+  108|         text = "" if verdict == "skip: binary" else raw.decode("utf-8", "replace")
+  109|         lines = text.count("\n") + (1 if text and not text.endswith("\n") else 0)
+  110|         desc = first_descriptive_line(text, ext) if verdict == "include" else ""
+  111|         rows.append((f, len(raw), lines, desc, verdict))
+  112|         if verdict == "include":
+  113|             included.append((f, text, ext))
+  114|         elif verdict.startswith("data"):
+  115|             data_dirs.setdefault(f.split("/")[0] if "/" in f else "(root)", []).append((f, text))
+  116| 
+  117|     # Parts: whole files in path order, never split across parts.
+  118|     parts, cur, cur_len = [], [], 0
+  119|     for f, text, ext in included:
+  120|         numbered = "\n".join(f"{i:>5}| {l}" for i, l in enumerate(text.splitlines(), 1))
+  121|         block = f"\n## `{f}`\n\n```{LANG.get(ext, '')}\n{numbered}\n```\n"
+  122|         if cur and cur_len + len(block) > PART_CHARS:
+  123|             parts.append(cur)
+  124|             cur, cur_len = [], 0
+  125|         cur.append((f, block))
+  126|         cur_len += len(block)
+  127|     if cur:
+  128|         parts.append(cur)
+  129| 
+  130|     (out / "llms").mkdir(parents=True, exist_ok=True)
+  131|     part_index, file_part = [], {}
+  132|     for i, part in enumerate(parts, 1):
+  133|         fname = f"llms/code-{i}.md"
+  134|         body = "".join(b for _, b in part)
+  135|         (out / fname).write_text(
+  136|             f"# {name}: source and docs, part {i} of {len(parts)}\n\n{stamp}\nFiles `{part[0][0]}` to "
+  137|             f"`{part[-1][0]}`. Lines are numbered as in the repository.\n" + body)
+  138|         part_index.append((fname, part[0][0], part[-1][0], len(part), len(body)))
+  139|         for f, _ in part:
+  140|             file_part[f] = f"code-{i}.md"
+  141| 
+  142|     m = [f"# {name}: file map", "", stamp, "",
+  143|          f"{len(files)} tracked files. {len(included)} are reproduced in full in the `code-N.md` parts; "
+  144|          "the rest are listed with the reason they are not.", "",
+  145|          f"Every path below is relative to {raw_base} (append the path to fetch the raw file).", "",
+  146|          "| File | Bytes | Lines | Description | In digest |", "|---|---|---|---|---|"]
+  147|     for f, size, lines, desc, verdict in rows:
+  148|         if not verdict.startswith("data"):
+  149|             m.append(f"| `{f}` | {size:,} | {lines:,} | {desc.replace('|', '/')[:100]} | {file_part.get(f, verdict)} |")
+  150|     if data_dirs:
+  151|         m += ["", "### Data files (not reproduced; one sample per folder in `data-samples.md`)", "",
+  152|               "| Folder | Files | Bytes |", "|---|---|---|"]
+  153|         sizes = {r[0]: r[1] for r in rows}
+  154|         for d, items in sorted(data_dirs.items()):
+  155|             m.append(f"| `{d}/` | {len(items)} | {sum(sizes[f] for f, _ in items):,} |")
+  156|     (out / "llms" / "MAP.md").write_text("\n".join(m) + "\n")
+  157| 
+  158|     if data_dirs:
+  159|         ds = [f"# {name}: data samples", "", stamp, "",
+  160|               "Data files are not reproduced in full. One sample per top-level folder, first 40 lines:", ""]
+  161|         for d, items in sorted(data_dirs.items()):
+  162|             f, text = items[0]
+  163|             sample = "\n".join(text.splitlines()[:40])
+  164|             ds += [f"## `{d}/` ({len(items)} files)", "", f"Sample: `{f}`", "",
+  165|                    f"```{LANG.get(os.path.splitext(f)[1].lower(), '')}\n{sample}\n```", ""]
+  166|         (out / "llms" / "data-samples.md").write_text("\n".join(ds))
+  167| 
+  168|     # Commits that touched anything besides the digest itself, verbatim.
+  169|     log = git("log", "--format=%h  %ad  %an  %s", "--date=short", "--", ".", ":(exclude)llms.txt", ":(exclude)llms",
+  170|               cwd=root).strip()
+  171|     count = len(log.splitlines()) if log else 0
+  172|     (out / "llms" / "HISTORY.md").write_text(
+  173|         f"# {name}: commit history\n\n{stamp}\n\n{count} commit(s), verbatim from `git log` "
+  174|         f"(commits that only regenerate this digest are left out):\n\n```\n{log}\n```\n")
+  175| 
+  176|     readme = next((f for f in files if f.lower() == "readme.md"), None)
+  177|     total = sum(p[4] for p in part_index)
+  178|     idx = [f"# {name}", ""]
+  179|     if readme:
+  180|         intro = re.split(r"(?m)^##\s", (root / readme).read_text(errors="replace"))[0]
+  181|         intro = re.sub(r"(?m)^#\s.*\n", "", intro).strip()
+  182|         if intro:
+  183|             idx += ["## Summary (the README's opening section, verbatim)", "", intro[:3000], ""]
+  184|     idx += [stamp, "", "## Start here", ""]
+  185|     if readme:
+  186|         idx.append(f"- [README]({raw_base}{readme}): overview")
+  187|     idx += [f"- [File map]({raw_base}llms/MAP.md): all {len(files)} files with size, line count, description, "
+  188|             "and which digest part holds each one",
+  189|             f"- [Commit history]({raw_base}llms/HISTORY.md): {count} commit(s)", ""]
+  190|     docs = [r[0] for r in rows if r[0].lower().endswith(".md") and r[0] != readme]
+  191|     if docs:
+  192|         idx += ["## Documentation", ""] + [f"- [{d}]({raw_base}{d})" for d in docs[:30]] + [""]
+  193|     idx += [f"## Full source text ({total:,} characters, about {total // 4:,} tokens, in {len(part_index)} part(s))", ""]
+  194|     idx += [f"- [{fn}]({raw_base}{fn}): {n} files, `{a}` to `{b}` ({size:,} characters)"
+  195|             for fn, a, b, n, size in part_index]
+  196|     if data_dirs:
+  197|         idx += ["", "## Data", "", f"- [Data samples]({raw_base}llms/data-samples.md): "
+  198|                 f"{sum(len(v) for v in data_dirs.values())} data files in {len(data_dirs)} folder(s), one sample each"]
+  199|     (out / "llms.txt").write_text("\n".join(idx) + "\n")
+  200|     return {"files": len(files), "included": len(included), "parts": len(part_index), "chars": total}
+  201| 
+  202| 
+  203| def snapshot(d: Path) -> dict[str, str]:
+  204|     out = {}
+  205|     if (d / "llms.txt").exists():
+  206|         out["llms.txt"] = (d / "llms.txt").read_text()
+  207|     for p in sorted((d / "llms").glob("*")) if (d / "llms").is_dir() else []:
+  208|         out[f"llms/{p.name}"] = p.read_text()
+  209|     return out
+  210| 
+  211| 
+  212| def main() -> None:
+  213|     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+  214|     ap.add_argument("--check", action="store_true", help="exit 1 if llms.txt and llms/ don't match the code")
+  215|     args = ap.parse_args()
+  216|     root = Path(git("rev-parse", "--show-toplevel", cwd=Path.cwd()).strip())
+  217|     tmp = Path(tempfile.mkdtemp(prefix="llms-digest-"))
+  218|     try:
+  219|         stats = build(root, tmp)
+  220|         fresh = snapshot(tmp)
+  221|         if args.check:
+  222|             # The stamp names a commit; compare everything else.
+  223|             norm = lambda d: {k: re.sub(r"commit `[0-9a-f]{12}` \(\d{4}-\d\d-\d\d\)", "commit", v) for k, v in d.items()}
+  224|             if norm(fresh) != norm(snapshot(root)):
+  225|                 sys.exit("llms.txt / llms/ don't match the code. Run: python3 scripts/llms_digest.py")
+  226|             print("llms.txt and llms/ match the code.")
+  227|             return
+  228|         shutil.rmtree(root / "llms", ignore_errors=True)
+  229|         (root / "llms").mkdir()
+  230|         for rel, text in fresh.items():
+  231|             (root / rel).write_text(text)
+  232|         print(f"{stats['included']} of {stats['files']} files in {stats['parts']} part(s), {stats['chars']:,} characters.")
+  233|     finally:
+  234|         shutil.rmtree(tmp, ignore_errors=True)
+  235| 
+  236| 
+  237| if __name__ == "__main__":
+  238|     main()
+```
 
 ## `training/README.md`
 
@@ -1907,271 +2150,4 @@ Files `training/README.md` to `training/test_v6_bow.py`. Lines are numbered as i
   213|             )
   214|         )
   215|     return "\n".join(lines)
-```
-
-## `training/test_v6_bow.py`
-
-```python
-    1| """Tests for the bag-of-words correction (recipe variant R2) in train.py and its cross-fit script.
-    2| 
-    3| Run from the directory that holds train.py and v6_bow_crossfit.py:
-    4|     python3 -m pytest -q test_v6_bow.py
-    5| CPU only. Builds a tiny random DeBERTa; downloads nothing.
-    6| """
-    7| import json
-    8| import pathlib
-    9| import sys
-   10| 
-   11| import numpy as np
-   12| import torch
-   13| import torch.nn.functional as F
-   14| 
-   15| ROOT = pathlib.Path(__file__).parent
-   16| sys.path.insert(0, str(ROOT))
-   17| 
-   18| 
-   19| def tiny_tokenizer():
-   20|     from tokenizers import Tokenizer, models, pre_tokenizers
-   21|     from transformers import PreTrainedTokenizerFast
-   22|     vocab = {"[PAD]": 0, "[UNK]": 1, "[CLS]": 2, "[SEP]": 3}
-   23|     for i in range(40):
-   24|         vocab[f"w{i}"] = len(vocab)
-   25|     tk = Tokenizer(models.WordLevel(vocab=vocab, unk_token="[UNK]"))
-   26|     tk.pre_tokenizer = pre_tokenizers.Whitespace()
-   27|     return PreTrainedTokenizerFast(tokenizer_object=tk, pad_token="[PAD]", unk_token="[UNK]",
-   28|                                    cls_token="[CLS]", sep_token="[SEP]")
-   29| 
-   30| 
-   31| def tiny_model(seed=0):
-   32|     from transformers import DebertaV2Config, DebertaV2ForSequenceClassification
-   33|     torch.manual_seed(seed)
-   34|     cfg = DebertaV2Config(vocab_size=64, hidden_size=32, num_hidden_layers=2,
-   35|                           num_attention_heads=2, intermediate_size=64,
-   36|                           max_position_embeddings=64, num_labels=2, pad_token_id=0)
-   37|     return DebertaV2ForSequenceClassification(cfg)
-   38| 
-   39| 
-   40| def tiny_batch(n=16, seed=0, soft=True, bow=None):
-   41|     from datasets import Dataset
-   42|     from transformers import DataCollatorWithPadding
-   43|     tok = tiny_tokenizer()
-   44|     rng = np.random.default_rng(seed)
-   45|     texts = [" ".join(f"w{j}" for j in rng.integers(0, 40, rng.integers(3, 12))) for _ in range(n)]
-   46|     labels = rng.integers(0, 2, n).tolist()
-   47|     d = {"user_input": texts, "labels": labels}
-   48|     if soft:
-   49|         d["soft_labels"] = [0.95 if y else 0.05 for y in labels]
-   50|     if bow is not None:
-   51|         d["bow_logit"] = [float(v) for v in bow]
-   52|     ds = Dataset.from_dict(d).map(lambda b: tok(b["user_input"], truncation=True, max_length=32),
-   53|                                   batched=True, remove_columns=["user_input"])
-   54|     return DataCollatorWithPadding(tok)([ds[i] for i in range(n)])
-   55| 
-   56| 
-   57| def bare_trainer(weights=(1.0, 1.0), rdrop=0.0):
-   58|     from train import WeightedLossTrainer
-   59|     tr = WeightedLossTrainer.__new__(WeightedLossTrainer)
-   60|     tr.loss_type, tr.focal_gamma, tr.rdrop_alpha = "weighted_ce", 2.0, rdrop
-   61|     tr.class_weights = torch.tensor(list(weights))
-   62|     tr.model_accepts_loss_kwargs = False
-   63|     return tr
-   64| 
-   65| 
-   66| def train_mode_no_dropout(model):
-   67|     model.train()
-   68|     for m in model.modules():
-   69|         if isinstance(m, torch.nn.Dropout) or "Dropout" in type(m).__name__:
-   70|             m.p = 0.0
-   71|             if hasattr(m, "drop_prob"):
-   72|                 m.drop_prob = 0.0
-   73|     return model
-   74| 
-   75| 
-   76| def clone(batch, drop=()):
-   77|     return {k: v.clone() for k, v in batch.items() if k not in drop}
-   78| 
-   79| 
-   80| def test_zero_bow_equals_no_bow_soft_and_hard_paths():
-   81|     """With b = 0 everywhere the loss equals the base recipe's (R1) to 1e-6."""
-   82|     from train import WeightedLossTrainer
-   83|     model = train_mode_no_dropout(tiny_model(1))
-   84|     for soft in (True, False):
-   85|         batch = tiny_batch(soft=soft, bow=np.zeros(16))
-   86|         assert batch["bow_logit"].dtype.is_floating_point
-   87|         tr = bare_trainer()
-   88|         with torch.no_grad():
-   89|             with_b = WeightedLossTrainer.compute_loss(tr, model, clone(batch))
-   90|             without = WeightedLossTrainer.compute_loss(tr, model, clone(batch, drop=("bow_logit",)))
-   91|         assert torch.allclose(with_b, without, atol=1e-6, rtol=0), (soft, with_b.item(), without.item())
-   92| 
-   93| 
-   94| def test_bow_shift_matches_manual_loss_and_outputs_stay_raw():
-   95|     from train import WeightedLossTrainer
-   96|     model = train_mode_no_dropout(tiny_model(2))
-   97|     rng = np.random.default_rng(3)
-   98|     b = rng.normal(0, 2.5, 16)
-   99|     batch = tiny_batch(soft=True, bow=b)
-  100|     tr = bare_trainer(weights=(0.57, 4.07))
-  101|     with torch.no_grad():
-  102|         loss, out = WeightedLossTrainer.compute_loss(tr, model, clone(batch), return_outputs=True)
-  103|         feats = clone(batch, drop=("labels", "soft_labels", "bow_logit"))
-  104|         raw = model(**feats).logits
-  105|         bt = batch["bow_logit"].to(raw.dtype)
-  106|         manual = tr._soft_loss(raw + torch.stack([-0.5 * bt, 0.5 * bt], dim=1),
-  107|                                batch["soft_labels"], tr.class_weights)
-  108|     assert torch.allclose(loss, manual, atol=1e-6, rtol=0), (loss.item(), manual.item())
-  109|     assert torch.allclose(out.logits, raw, atol=1e-6), "outputs must carry the raw logits"
-  110|     with torch.no_grad():
-  111|         plain = WeightedLossTrainer.compute_loss(tr, model, clone(batch, drop=("bow_logit",)))
-  112|     assert abs(loss.item() - plain.item()) > 1e-4, "a non-zero b must change the training loss"
-  113| 
-  114| 
-  115| def test_bow_is_ignored_in_eval_mode():
-  116|     from train import WeightedLossTrainer
-  117|     model = tiny_model(4).eval()
-  118|     batch = tiny_batch(soft=False, bow=np.full(16, 5.0))
-  119|     tr = bare_trainer()
-  120|     with torch.no_grad():
-  121|         with_b = WeightedLossTrainer.compute_loss(tr, model, clone(batch))
-  122|         without = WeightedLossTrainer.compute_loss(tr, model, clone(batch, drop=("bow_logit",)))
-  123|     assert torch.allclose(with_b, without, atol=1e-7, rtol=0)
-  124| 
-  125| 
-  126| def test_gradient_shrinks_where_the_bag_of_words_already_explains_the_label():
-  127|     """The point of the correction: rows the keyword expert gets right push the encoder less."""
-  128|     from train import WeightedLossTrainer
-  129|     grads = {}
-  130|     for name, sign in (("agrees", 1.0), ("zero", 0.0), ("disagrees", -1.0)):
-  131|         model = train_mode_no_dropout(tiny_model(5))
-  132|         batch = tiny_batch(soft=False, bow=np.zeros(16), seed=7)
-  133|         y = batch["labels"].float()
-  134|         batch["bow_logit"] = sign * 4.0 * (2 * y - 1)  # +4 toward the true class, or away from it
-  135|         tr = bare_trainer()
-  136|         model.zero_grad()
-  137|         WeightedLossTrainer.compute_loss(tr, model, clone(batch)).backward()
-  138|         grads[name] = float(model.classifier.weight.grad.norm())
-  139|     assert grads["agrees"] < grads["zero"] < grads["disagrees"], grads
-  140| 
-  141| 
-  142| def test_rdrop_path_still_runs_with_bow():
-  143|     from train import WeightedLossTrainer
-  144|     model = train_mode_no_dropout(tiny_model(6))
-  145|     batch = tiny_batch(soft=True, bow=np.linspace(-3, 3, 16))
-  146|     tr = bare_trainer(rdrop=0.5)
-  147|     with torch.no_grad():
-  148|         loss = WeightedLossTrainer.compute_loss(tr, model, clone(batch))
-  149|     assert torch.isfinite(loss)
-  150| 
-  151| 
-  152| def _write(path, rows):
-  153|     with open(path, "w") as f:
-  154|         for r in rows:
-  155|             f.write(json.dumps(r) + "\n")
-  156| 
-  157| 
-  158| def test_crossfit_script(tmp_path):
-  159|     import v6_bow_crossfit as cf
-  160|     rng = np.random.default_rng(0)
-  161|     scary, bland = [f"s{i}" for i in range(30)], [f"b{i}" for i in range(30)]
-  162| 
-  163|     def row(y):
-  164|         # unsafe rows lean on the "scary" vocabulary, so a unigram model can predict the label
-  165|         pool = scary if (rng.random() < (0.85 if y else 0.15)) else bland
-  166|         return {"user_input": " ".join(rng.choice(pool, 8)), "toxicity": int(y), "keep": "x"}
-  167| 
-  168|     a = [row(i % 2) for i in range(400)]
-  169|     a[1] = dict(a[0])  # an exact duplicate, to check that duplicates share a fold
-  170|     b = [row(0) for _ in range(120)]  # a single-class pool, like FalseReject
-  171|     pa, pb = tmp_path / "pa.jsonl", tmp_path / "pb.jsonl"
-  172|     _write(pa, a)
-  173|     _write(pb, b)
-  174|     out = tmp_path / "out"
-  175|     rep = cf.main(["--inputs", str(pa), str(pb), str(pa), "--out_dir", str(out), "--clip", "6"])
-  176|     ra = [json.loads(l) for l in open(out / "pa.jsonl")]
-  177|     rb = [json.loads(l) for l in open(out / "pb.jsonl")]
-  178|     assert len(ra) == len(a) and len(rb) == len(b), "a path given twice is processed once"
-  179|     assert all("bow_logit" in r and r["keep"] == "x" for r in ra + rb)
-  180|     assert [r["user_input"] for r in ra] == [r["user_input"] for r in a], "row order is kept"
-  181|     vals = np.array([r["bow_logit"] for r in ra + rb])
-  182|     assert np.isfinite(vals).all() and np.abs(vals).max() <= 6.0
-  183|     assert ra[0]["bow_logit"] == ra[1]["bow_logit"], "duplicates must share a fold and so a score"
-  184|     assert rep["auroc_overall"] > 0.8 and rep["per_file"]["pb.jsonl"]["auroc"] is None
-  185|     ya = np.array([r["toxicity"] for r in ra])
-  186|     va = np.array([r["bow_logit"] for r in ra])
-  187|     assert va[ya == 1].mean() > va[ya == 0].mean()
-  188| 
-  189| 
-  190| def test_main_end_to_end_with_the_v6_flags(tmp_path, monkeypatch):
-  191|     """The release training command line (plus the R2 field) runs end to end on a tiny model:
-  192|     loader rows + a file listed twice + a file with soft targets and bow_logit, grouped by length,
-  193|     one evaluation at the last step, final checkpoint kept."""
-  194|     import types
-  195| 
-  196|     import pandas as pd
-  197| 
-  198|     import train
-  199|     monkeypatch.setattr(torch.backends.mps, "is_available", lambda: False)
-  200|     rng = np.random.default_rng(0)
-  201| 
-  202|     def text():
-  203|         return " ".join(f"w{j}" for j in rng.integers(0, 40, rng.integers(3, 12)))
-  204| 
-  205|     def frame(n):
-  206|         y = np.arange(n) % 2
-  207|         return pd.DataFrame({"user_input": [text() for _ in range(n)], "toxicity": y})
-  208| 
-  209|     monkeypatch.setattr(train, "load_train_val",
-  210|                         lambda val_fraction=0.1, seed=13, max_samples=None: (frame(24), frame(16)))
-  211|     monkeypatch.setattr(train, "AutoTokenizer",
-  212|                         types.SimpleNamespace(from_pretrained=lambda *a, **k: tiny_tokenizer()))
-  213|     monkeypatch.setattr(train, "AutoModelForSequenceClassification",
-  214|                         types.SimpleNamespace(from_pretrained=lambda *a, **k: tiny_model(0)))
-  215|     plain = [{"user_input": text(), "toxicity": int(i % 2)} for i in range(10)]
-  216|     rich = [{"user_input": text(), "toxicity": int(i % 2),
-  217|              "toxicity_soft": 0.95 if i % 2 else 0.05, "bow_logit": float(rng.normal(0, 2))}
-  218|             for i in range(20)]
-  219|     p_plain, p_rich = tmp_path / "p1_copy.jsonl", tmp_path / "p3.jsonl"
-  220|     _write(p_plain, plain)
-  221|     _write(p_rich, rich)
-  222|     out, meta_path = tmp_path / "out", tmp_path / "meta.json"
-  223|     monkeypatch.setattr(sys, "argv", [
-  224|         "train.py", "--model", "tiny", "--output_dir", str(out),
-  225|         "--extra_train_jsonl", str(p_plain), str(p_plain), str(p_rich),
-  226|         "--soft_label_field", "toxicity_soft", "--bow_logit_field", "bow_logit",
-  227|         "--loss", "weighted_ce", "--class_weights", "1.0,1.0",
-  228|         "--lr", "1e-3", "--batch_size", "4", "--grad_accum", "1", "--max_len", "32",
-  229|         "--rdrop_alpha", "0", "--allow_tf32", "--group_by_length",
-  230|         "--max_steps", "6", "--eval_steps", "6",
-  231|         "--seed", "13", "--head_seed", "13", "--split_seed", "13", "--run_meta", str(meta_path)])
-  232|     train.main()
-  233|     meta = json.load(open(meta_path))
-  234|     assert meta["global_step"] == 6 and meta["best_checkpoint_step"] == 6
-  235|     assert meta["train_rows"] == 24 + 2 * len(plain) + len(rich)
-  236|     assert meta["soft_targets"] and meta["bow_residual"] and meta["group_by_length"]
-  237|     assert all(np.isfinite(h["loss"]) for h in meta["log_history"] if "loss" in h)
-  238|     assert (out / "model.safetensors").exists() or (out / "pytorch_model.bin").exists()
-  239| 
-  240| 
-  241| def test_missing_soft_target_is_refused(tmp_path, monkeypatch):
-  242|     """A row without its soft target must stop the run instead of becoming a NaN loss."""
-  243|     import types
-  244| 
-  245|     import pandas as pd
-  246|     import pytest
-  247| 
-  248|     import train
-  249|     monkeypatch.setattr(torch.backends.mps, "is_available", lambda: False)
-  250|     df = pd.DataFrame({"user_input": ["w1 w2 w3"] * 8, "toxicity": [0, 1] * 4})
-  251|     monkeypatch.setattr(train, "load_train_val",
-  252|                         lambda val_fraction=0.1, seed=13, max_samples=None: (df, df))
-  253|     monkeypatch.setattr(train, "AutoTokenizer",
-  254|                         types.SimpleNamespace(from_pretrained=lambda *a, **k: tiny_tokenizer()))
-  255|     bad = tmp_path / "bad.jsonl"
-  256|     _write(bad, [{"user_input": "w1 w2", "toxicity": 1, "toxicity_soft": 0.95},
-  257|                  {"user_input": "w3 w4", "toxicity": 0}])
-  258|     monkeypatch.setattr(sys, "argv", ["train.py", "--output_dir", str(tmp_path / "o"),
-  259|                                       "--extra_train_jsonl", str(bad),
-  260|                                       "--soft_label_field", "toxicity_soft"])
-  261|     with pytest.raises(SystemExit):
-  262|         train.main()
 ```

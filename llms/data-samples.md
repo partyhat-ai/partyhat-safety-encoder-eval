@@ -1,12 +1,12 @@
 # partyhat-safety-encoder-eval: data samples
 
-Generated from commit `2de96ea8c68b` (2026-11-20) of github.com/partyhat-ai/partyhat-safety-encoder-eval. Regenerate whenever the code changes.
+Generated from commit `8a6580168441` (2026-11-20) of github.com/partyhat-ai/partyhat-safety-encoder-eval by `scripts/llms_digest.py`, which `.github/workflows/llms-digest.yml` reruns on every push to `main`, so this text matches the code at that commit.
 
-Data files are not reproduced in full. One sample per directory, first 40 lines:
+Data files are not reproduced in full. One sample per top-level folder, first 40 lines:
 
 ## `training/` (1 files)
 
-Sample: [`training/training_config.json`](https://raw.githubusercontent.com/partyhat-ai/partyhat-safety-encoder-eval/main/training/training_config.json)
+Sample: `training/training_config.json`
 
 ```json
 {
