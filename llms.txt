@@ -1,0 +1,36 @@
+# partyhat-safety-encoder-eval
+
+> Evaluation scripts, evidence reproduction and training code for partyhat-safety-encoder 2.0
+
+Generated from commit `2de96ea8c68b` (2026-11-20) of github.com/partyhat-ai/partyhat-safety-encoder-eval. Regenerate whenever the code changes.
+
+## Summary (the README's opening section, verbatim)
+
+By Cameron Feather at Partyhat. These scripts recompute the figures on the
+[partyhat-safety-encoder 2.0 model card](https://huggingface.co/partyhat-hf/partyhat-safety-encoder) from the
+evidence bundle in that repository's `evidence/` folder. The bundle holds a per-item scorecard for release 2.0 and
+for each model the card compares it with, and the development-set scorecards that set release 2.0's thresholds and
+back the card's "Where the gain came from" section: row index, label, score, margin and decision, with no prompt text.
+
+## Start here
+
+- [README](https://raw.githubusercontent.com/partyhat-ai/partyhat-safety-encoder-eval/main/README.md): overview
+- [File map](https://raw.githubusercontent.com/partyhat-ai/partyhat-safety-encoder-eval/main/llms/MAP.md): all 33 files with size, line count, description, and which digest part holds each one
+- [Commit history](https://raw.githubusercontent.com/partyhat-ai/partyhat-safety-encoder-eval/main/llms/HISTORY.md): 2 public commit(s)
+
+## Documentation
+
+- [baselines/README.md](https://raw.githubusercontent.com/partyhat-ai/partyhat-safety-encoder-eval/main/baselines/README.md)
+- [training/README.md](https://raw.githubusercontent.com/partyhat-ai/partyhat-safety-encoder-eval/main/training/README.md)
+
+## Full source text (466,652 characters, about 116,663 tokens, in 5 part(s))
+
+- [llms/code-1.md](https://raw.githubusercontent.com/partyhat-ai/partyhat-safety-encoder-eval/main/llms/code-1.md): 6 files, `.gitignore` to `dev_ablation.py` (60,148 characters)
+- [llms/code-2.md](https://raw.githubusercontent.com/partyhat-ai/partyhat-safety-encoder-eval/main/llms/code-2.md): 4 files, `reproduce_card.py` to `score_test_sets.py` (107,414 characters)
+- [llms/code-3.md](https://raw.githubusercontent.com/partyhat-ai/partyhat-safety-encoder-eval/main/llms/code-3.md): 7 files, `training/README.md` to `training/test_v6_bow.py` (118,006 characters)
+- [llms/code-4.md](https://raw.githubusercontent.com/partyhat-ai/partyhat-safety-encoder-eval/main/llms/code-4.md): 11 files, `training/test_v6_build.py` to `training/v6_data.py` (116,640 characters)
+- [llms/code-5.md](https://raw.githubusercontent.com/partyhat-ai/partyhat-safety-encoder-eval/main/llms/code-5.md): 4 files, `training/v6_metrics.py` to `training/v6_select.py` (64,444 characters)
+
+## Data
+
+- [Data samples](https://raw.githubusercontent.com/partyhat-ai/partyhat-safety-encoder-eval/main/llms/data-samples.md): 1 data files in 1 directories, one sample each
