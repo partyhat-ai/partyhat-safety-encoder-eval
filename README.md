@@ -2,7 +2,8 @@
 
 By Cameron Feather at Partyhat. These scripts recompute the figures on the
 [partyhat-safety-encoder 2.0 model card](https://huggingface.co/partyhat-hf/partyhat-safety-encoder) from the
-evidence bundle in that repository's `evidence/` folder. The bundle holds a per-item scorecard for release 2.0 and
+evidence bundle, which is in this repository's [`evidence/`](evidence/) folder (a byte-identical copy of the one on
+Hugging Face; every file's sha256 is in [`evidence/MANIFEST.md`](evidence/MANIFEST.md)). The bundle holds a per-item scorecard for release 2.0 and
 for each model the card compares it with, and the development-set scorecards that set release 2.0's thresholds and
 back the card's "Where the gain came from" section: row index, label, score, margin and decision, with no prompt text.
 
@@ -31,12 +32,11 @@ All three scripts are byte-identical to the copies in the evidence bundle; their
 
 ## Run it
 
-The model repository is gated for non-commercial use: accept its access terms on its Hugging Face page and log in
-(`hf auth login`) before downloading.
+The evidence is already here, so recomputing the card needs no access to the gated model. Only `attach_labels.py`
+needs a Hugging Face login (`hf auth login`), to read the public datasets the labels come from.
 
 ```bash
 pip install -r requirements.txt
-hf download partyhat-hf/partyhat-safety-encoder --include "evidence/*" --local-dir .
 python3 attach_labels.py evidence evidence_with_labels     # accept the access terms of allenai/wildguardmix
                                                             # and allenai/wildjailbreak first
 python3 reproduce_card.py evidence_with_labels
@@ -54,7 +54,10 @@ Dataset sources, revisions and licences are listed in the bundle's `README.md`.
 
 `score_test_sets.py` goes the other way, from the weights to the scorecards: it scores the published weights on the
 card's twelve test sets, read from the public datasets at pinned revisions in the bundle's row order, and writes
-scorecards in the bundle's schema. With `--compare` it checks them against the bundle's scorecards row by row.
+scorecards in the bundle's schema. With `--compare` it checks them against the bundle's scorecards row by row. The
+weights are gated for non-commercial use: accept the access terms on the
+[model's Hugging Face page](https://huggingface.co/partyhat-hf/partyhat-safety-encoder) and log in (`hf auth login`)
+first.
 
 ```bash
 pip install -r requirements-scoring.txt

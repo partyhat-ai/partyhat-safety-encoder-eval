@@ -1,0 +1,78 @@
+{
+ "gpu": "NVIDIA A10",
+ "engine": "transformers",
+ "fp32": {
+  "128": {
+   "cold_ms": 570.3,
+   "bs1": {
+    "n": 1000,
+    "p50": 25.45,
+    "p95": 26.72,
+    "p99": 27.09,
+    "mean": 25.76
+   },
+   "batches": {
+    "1": {
+     "p95_ms": 26.91,
+     "items_per_s": 38.2
+    },
+    "8": {
+     "p95_ms": 92.89,
+     "items_per_s": 86.9
+    },
+    "16": {
+     "p95_ms": 181.52,
+     "items_per_s": 89.1
+    },
+    "32": {
+     "p95_ms": 353.54,
+     "items_per_s": 91.1
+    },
+    "64": {
+     "p95_ms": 712.45,
+     "items_per_s": 90.7
+    }
+   },
+   "best_batch_at_p95_target": 8,
+   "items_per_s_at_target": 86.9,
+   "items_per_s_unconstrained": 91.1,
+   "unconstrained_batch": 32
+  },
+  "512": {
+   "cold_ms": 63.1,
+   "bs1": {
+    "n": 1000,
+    "p50": 68.4,
+    "p95": 69.14,
+    "p99": 69.46,
+    "mean": 68.45
+   },
+   "batches": {
+    "1": {
+     "p95_ms": 69.39,
+     "items_per_s": 14.6
+    },
+    "8": {
+     "p95_ms": 475.57,
+     "items_per_s": 16.9
+    },
+    "16": {
+     "p95_ms": 951.7,
+     "items_per_s": 16.9
+    },
+    "32": {
+     "p95_ms": 1926.67,
+     "items_per_s": 16.7
+    },
+    "64": {
+     "p95_ms": 3635.19,
+     "items_per_s": 17.7
+    }
+   },
+   "best_batch_at_p95_target": 1,
+   "items_per_s_at_target": 14.6,
+   "items_per_s_unconstrained": 17.7,
+   "unconstrained_batch": 64
+  }
+ }
+}
