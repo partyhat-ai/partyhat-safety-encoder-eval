@@ -1,6 +1,6 @@
 # partyhat-safety-encoder-eval: file map
 
-Generated from commit `4067235901f4` (2026-11-20) of github.com/partyhat-ai/partyhat-safety-encoder-eval by `scripts/llms_digest.py`, which `.github/workflows/llms-digest.yml` reruns on every push to `main`, so this text matches the code at that commit.
+Generated from commit `db871f95055f` (2026-11-20) of github.com/partyhat-ai/partyhat-safety-encoder-eval by `scripts/llms_digest.py`, which `.github/workflows/llms-digest.yml` reruns on every push to `main`, so this text matches the code at that commit.
 
 35 tracked files. 34 are reproduced in full in the `code-N.md` parts; the rest are listed with the reason they are not.
 
@@ -19,7 +19,7 @@ Every path below is relative to https://raw.githubusercontent.com/partyhat-ai/pa
 | `requirements-scoring.txt` | 158 | 9 |  | code-2.md |
 | `requirements.txt` | 87 | 5 |  | code-2.md |
 | `score_test_sets.py` | 27,230 | 473 | score_test_sets.py: score the published weights (or an open comparison guard) on the card's twelve t | code-2.md |
-| `scripts/llms_digest.py` | 12,022 | 238 | Build llms.txt and llms/: a plain-text copy of this repository for tools that | code-3.md |
+| `scripts/llms_digest.py` | 12,285 | 241 | Build llms.txt and llms/: a plain-text copy of this repository for tools that | code-3.md |
 | `training/README.md` | 13,977 | 175 | Training code for partyhat-safety-encoder 2.0 | code-3.md |
 | `training/decontam.py` | 24,848 | 584 | decontam.py — text normalisation and duplicate / near-duplicate detection against test sets. | code-3.md |
 | `training/metrics_core.py` | 1,168 | 36 | metrics_core.py: small score-based metrics that v6_metrics.py builds on. | code-3.md |
