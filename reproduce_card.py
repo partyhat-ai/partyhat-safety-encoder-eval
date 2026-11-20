@@ -1016,6 +1016,12 @@ def main():
         fig(S, f"{n} tokens, batch 1: median ms (file: {r['p50']})", p50, ms1(r["p50"]))
     r = lat["fp32"]["128"]["bs1"]
     fig(S, f"128 tokens, batch 1: p95 ms (file: {r['p95']})", "26.7", ms1(r["p95"]))
+    ips = [lat["fp32"]["128"]["batches"][b]["items_per_s"] for b in ("8", "16", "32", "64")]
+    fig(S, f"128 tokens, batches of 8 to 64: prompts a second, lowest to highest (file: {ips})", "87–91",
+        f"{round(min(ips))}–{round(max(ips))}")
+    each = [1000 / v for v in ips]
+    claim(S, "128 tokens, batches of 8 to 64: about 11 ms each", ", ".join(f"{v:.1f}" for v in each),
+          all(10.5 <= v < 11.6 for v in each))
 
     S = "Speed: Qwen3Guard-Gen-0.6B (latency/qwen3guard_gen_0.6b_A10G_bf16.json, time to its verdict)"
     qlat = json.loads((bd.root / "latency" / "qwen3guard_gen_0.6b_A10G_bf16.json").read_text())
