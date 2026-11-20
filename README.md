@@ -2,7 +2,7 @@
 
 By Cameron Feather at Partyhat. These scripts recompute the figures on the
 [partyhat-safety-encoder 2.0 model card](https://huggingface.co/partyhat-hf/partyhat-safety-encoder) from the
-evidence bundle, which is in this repository's [`evidence/`](evidence/) folder (a byte-identical copy of the one on
+evidence bundle, which is in this repository's [`evidence/`](https://github.com/partyhat-ai/partyhat-safety-encoder-eval/tree/main/evidence) folder (a byte-identical copy of the one on
 Hugging Face; every file's sha256 is in [`evidence/MANIFEST.md`](evidence/MANIFEST.md)). The bundle holds a per-item scorecard for release 2.0 and
 for each model the card compares it with, and the development-set scorecards that set release 2.0's thresholds and
 back the card's "Where the gain came from" section: row index, label, score, margin and decision, with no prompt text.
