@@ -1,6 +1,6 @@
 # partyhat-safety-encoder-eval: file map
 
-Generated from commit `8a6580168441` (2026-11-20) of github.com/partyhat-ai/partyhat-safety-encoder-eval by `scripts/llms_digest.py`, which `.github/workflows/llms-digest.yml` reruns on every push to `main`, so this text matches the code at that commit.
+Generated from commit `4067235901f4` (2026-11-20) of github.com/partyhat-ai/partyhat-safety-encoder-eval by `scripts/llms_digest.py`, which `.github/workflows/llms-digest.yml` reruns on every push to `main`, so this text matches the code at that commit.
 
 35 tracked files. 34 are reproduced in full in the `code-N.md` parts; the rest are listed with the reason they are not.
 
