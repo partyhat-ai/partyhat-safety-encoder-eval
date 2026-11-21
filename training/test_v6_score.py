@@ -18,8 +18,37 @@ def test_r4_is_r1_without_p5():
     assert all("/v6/pools/" in e for e in c if e.endswith(".jsonl"))
     strip = lambda cmd: [x for x in cmd if not x.endswith(".jsonl")]  # noqa: E731
     assert strip(c) == strip(r1)          # identical recipe, flags and S
-    # R4 row count = 3 ToxicChat copies + Aegis 2.0 + WildGuardMix + WildJailbreak (release file counts)
-    assert 3 * 4573 + 21132 + 43080 + 58200 == 136131
+
+
+# Rows in each training file of the release build (the pool files on the data volume).
+POOL_ROWS = {
+    "p1_copy": 4573,      # ToxicChat train split (toxicchat0124 train minus the 10% validation carve)
+    "p2": 21132,          # Aegis 2.0
+    "p3": 43080,          # WildGuardMix
+    "p4": 58200,          # WildJailbreak, all four types
+    "p4_r0": 29100,       # WildJailbreak, vanilla_harmful + adversarial_harmful only
+    "p5": 14185,          # FalseReject
+    "r3_extra": 100000,   # R3's extra teacher-labelled prompts
+}
+# train.py's own ToxicChat loader adds the split once more, on top of the files the recipe lists.
+LOADER_ROWS = POOL_ROWS["p1_copy"]
+# Training rows per recipe variant, as published in evidence/reports/dev_ablation.md.
+DOCUMENTED_ROWS = {"R0": 107031, "R1": 150316, "R2": 150316, "R3": 250316, "R4": 136131}
+
+
+def _recipe_rows(variant):
+    files = [e.rsplit("/", 1)[1].removesuffix(".jsonl") for e in _cmd(variant) if e.endswith(".jsonl")]
+    return LOADER_ROWS + sum(POOL_ROWS[f] for f in files)
+
+
+def test_every_variant_has_a_documented_row_count():
+    assert set(DOCUMENTED_ROWS) == set(vs.RECIPE_VARIANTS)
+
+
+@pytest.mark.parametrize("variant", sorted(DOCUMENTED_ROWS))
+def test_recipe_row_count_matches_the_report(variant):
+    # e.g. R4 = 3 ToxicChat copies (loader + p1_copy twice) + Aegis 2.0 + WildGuardMix + WildJailbreak
+    assert _recipe_rows(variant) == DOCUMENTED_ROWS[variant]
 
 
 def _val(cmd, flag):
