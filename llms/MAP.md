@@ -1,6 +1,6 @@
 # partyhat-safety-encoder-eval: file map
 
-Generated from commit `d251619f4822` (2026-11-20) of github.com/partyhat-ai/partyhat-safety-encoder-eval by `scripts/llms_digest.py`, which `.github/workflows/llms-digest.yml` reruns on every push to `main`, so this text matches the code at that commit.
+Generated from commit `6e4922573e47` (2026-11-20) of github.com/partyhat-ai/partyhat-safety-encoder-eval by `scripts/llms_digest.py`, which `.github/workflows/llms-digest.yml` reruns on every push to `main`, so this text matches the code at that commit.
 
 244 tracked files. 43 are reproduced in full in the `code-N.md` parts; the rest are listed with the reason they are not.
 
@@ -16,7 +16,7 @@ Every path below is relative to https://raw.githubusercontent.com/partyhat-ai/pa
 | `baselines/README.md` | 5,036 | 69 | How each comparison model was scored | code-1.md |
 | `dev_ablation.py` | 33,567 | 540 | dev_ablation.py: recompute the "Where the gain came from" section of the partyhat-safety-encoder 2.0 | code-1.md |
 | `evidence/MANIFEST.md` | 27,734 | 212 | MANIFEST: release 2.0 evidence bundle (no dataset text) | code-1.md |
-| `evidence/README.md` | 21,632 | 226 | Evidence for partyhat-safety-encoder 2.0 | code-1.md |
+| `evidence/README.md` | 21,586 | 226 | Evidence for partyhat-safety-encoder 2.0 | code-1.md |
 | `evidence/attach_labels.py` | 7,091 | 165 | attach_labels.py: rebuild the item labels stripped from the evidence bundle, from the public dataset | code-2.md |
 | `evidence/dev_ablation.py` | 33,567 | 540 | dev_ablation.py: recompute the "Where the gain came from" section of the partyhat-safety-encoder 2.0 | code-2.md |
 | `evidence/latency/time_encoder.py` | 5,215 | 119 | time_encoder.py: the timing code that produced latency/release_2_A10_fp32.json. | code-2.md |

@@ -1,10 +1,11 @@
 # partyhat-safety-encoder-eval: commit history
 
-Generated from commit `d251619f4822` (2026-11-20) of github.com/partyhat-ai/partyhat-safety-encoder-eval by `scripts/llms_digest.py`, which `.github/workflows/llms-digest.yml` reruns on every push to `main`, so this text matches the code at that commit.
+Generated from commit `6e4922573e47` (2026-11-20) of github.com/partyhat-ai/partyhat-safety-encoder-eval by `scripts/llms_digest.py`, which `.github/workflows/llms-digest.yml` reruns on every push to `main`, so this text matches the code at that commit.
 
-6 commit(s), verbatim from `git log` (commits that only regenerate this digest are left out):
+7 commit(s), verbatim from `git log` (commits that only regenerate this digest are left out):
 
 ```
+6e49225  2026-11-20  Cameron Feather  Licence table: drop "for research purposes" from the WildGuardMix and WildJailbreak rows
 d251619  2026-11-20  Cameron Feather  README: link the evidence folder by its full URL, which also resolves from the raw file
 ca598a6  2026-11-20  Cameron Feather  Include the evidence bundle, so the card's figures can be recomputed without the gated weights
 db871f9  2026-11-20  Cameron Feather  llms_digest.py: stamp the last code commit, so a rebuild after a digest-only commit changes nothing

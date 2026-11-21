@@ -9,13 +9,13 @@ Hugging Face; every file's sha256 is in [`evidence/MANIFEST.md`](evidence/MANIFE
 for each model the card compares it with, and the development-set scorecards that set release 2.0's thresholds and
 back the card's "Where the gain came from" section: row index, label, score, margin and decision, with no prompt text.
 
-Generated from commit `d251619f4822` (2026-11-20) of github.com/partyhat-ai/partyhat-safety-encoder-eval by `scripts/llms_digest.py`, which `.github/workflows/llms-digest.yml` reruns on every push to `main`, so this text matches the code at that commit.
+Generated from commit `6e4922573e47` (2026-11-20) of github.com/partyhat-ai/partyhat-safety-encoder-eval by `scripts/llms_digest.py`, which `.github/workflows/llms-digest.yml` reruns on every push to `main`, so this text matches the code at that commit.
 
 ## Start here
 
 - [README](https://raw.githubusercontent.com/partyhat-ai/partyhat-safety-encoder-eval/main/README.md): overview
 - [File map](https://raw.githubusercontent.com/partyhat-ai/partyhat-safety-encoder-eval/main/llms/MAP.md): all 244 files with size, line count, description, and which digest part holds each one
-- [Commit history](https://raw.githubusercontent.com/partyhat-ai/partyhat-safety-encoder-eval/main/llms/HISTORY.md): 6 commit(s)
+- [Commit history](https://raw.githubusercontent.com/partyhat-ai/partyhat-safety-encoder-eval/main/llms/HISTORY.md): 7 commit(s)
 
 ## Documentation
 
@@ -25,9 +25,9 @@ Generated from commit `d251619f4822` (2026-11-20) of github.com/partyhat-ai/part
 - [evidence/reports/dev_ablation.md](https://raw.githubusercontent.com/partyhat-ai/partyhat-safety-encoder-eval/main/evidence/reports/dev_ablation.md)
 - [training/README.md](https://raw.githubusercontent.com/partyhat-ai/partyhat-safety-encoder-eval/main/training/README.md)
 
-## Full source text (698,073 characters, about 174,518 tokens, in 7 part(s))
+## Full source text (698,027 characters, about 174,506 tokens, in 7 part(s))
 
-- [llms/code-1.md](https://raw.githubusercontent.com/partyhat-ai/partyhat-safety-encoder-eval/main/llms/code-1.md): 9 files, `.github/workflows/llms-digest.yml` to `evidence/README.md` (114,254 characters)
+- [llms/code-1.md](https://raw.githubusercontent.com/partyhat-ai/partyhat-safety-encoder-eval/main/llms/code-1.md): 9 files, `.github/workflows/llms-digest.yml` to `evidence/README.md` (114,208 characters)
 - [llms/code-2.md](https://raw.githubusercontent.com/partyhat-ai/partyhat-safety-encoder-eval/main/llms/code-2.md): 6 files, `evidence/attach_labels.py` to `evidence/reports/dev_ablation.md` (86,872 characters)
 - [llms/code-3.md](https://raw.githubusercontent.com/partyhat-ai/partyhat-safety-encoder-eval/main/llms/code-3.md): 1 files, `evidence/reproduce_card.py` to `evidence/reproduce_card.py` (76,427 characters)
 - [llms/code-4.md](https://raw.githubusercontent.com/partyhat-ai/partyhat-safety-encoder-eval/main/llms/code-4.md): 4 files, `reproduce_card.py` to `score_test_sets.py` (107,414 characters)

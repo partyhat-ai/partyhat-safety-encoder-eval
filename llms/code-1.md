@@ -1,6 +1,6 @@
 # partyhat-safety-encoder-eval: source and docs, part 1 of 7
 
-Generated from commit `d251619f4822` (2026-11-20) of github.com/partyhat-ai/partyhat-safety-encoder-eval by `scripts/llms_digest.py`, which `.github/workflows/llms-digest.yml` reruns on every push to `main`, so this text matches the code at that commit.
+Generated from commit `6e4922573e47` (2026-11-20) of github.com/partyhat-ai/partyhat-safety-encoder-eval by `scripts/llms_digest.py`, which `.github/workflows/llms-digest.yml` reruns on every push to `main`, so this text matches the code at that commit.
 Files `.github/workflows/llms-digest.yml` to `evidence/README.md`. Lines are numbered as in the repository.
 
 ## `.github/workflows/llms-digest.yml`
@@ -989,9 +989,9 @@ Files `.github/workflows/llms-digest.yml` to `evidence/README.md`. Lines are num
 ```markdown
     1| # MANIFEST: release 2.0 evidence bundle (no dataset text)
     2| 
-    3| 208 files, 36,100,538 bytes in total (this manifest excluded). sha256 · bytes · path.
+    3| 208 files, 36,100,492 bytes in total (this manifest excluded). sha256 · bytes · path.
     4| 
-    5| - `233526d001a8b5087da8bdecb8440ca1ddaf22a9b7eef8f02d5ed78b108eada9` · 21,632 · `README.md`
+    5| - `8a92e1cc17cc5ebd44457d47a3a37e54631b8761949eadee123e135285415646` · 21,586 · `README.md`
     6| - `52e13d1ec3ce5f7357f4d70832916dae0b461bc11087f1c1341710df56e02fa1` · 7,091 · `attach_labels.py`
     7| - `28f007132481bccb39ea970f6ca073c03fc72ea7282ce4018596d15d38918ae2` · 33,567 · `dev_ablation.py`
     8| - `8c59c14b5f101e0429dd31dfb85a82b8d5bb8ae5c7f4a57984ca47c09b38429f` · 1,826 · `latency/qwen3guard_gen_0.6b_A10G_bf16.json`
@@ -1387,8 +1387,8 @@ Files `.github/workflows/llms-digest.yml` to `evidence/README.md`. Lines are num
   181| | FalseReject | FalseReject held-back rows (`dev_holdout_p5`) | CC-BY-NC-4.0 | Zhang, Xu, Wu and Reddy, *FalseReject: A Resource for Improving Contextual Safety and Mitigating Over-Refusals in LLMs via Structured Reasoning*, 2025 |
   182| | ToxicChat | `toxicchat_test`, ToxicChat validation split (`tc_val`) | CC-BY-NC-4.0 | Lin et al., *ToxicChat: Unveiling Hidden Challenges of Toxicity Detection in Real-World User-AI Conversation*, 2023 |
   183| | Aegis 2.0 | `aegis2_test_prompt`, Aegis 2.0 validation set (`aegis_val`) | CC-BY-4.0 | Ghosh et al., *AEGIS2.0: A Diverse AI Safety Dataset and Risks Taxonomy for Alignment of LLM Guardrails*, 2025 |
-  184| | WildGuardMix | `wildguardtest_prompt`, WildGuardMix held-back rows (`dev_holdout_p3`) | ODC-BY; gated: access on accepting the AI2 Responsible Use Guidelines, for research purposes | Han et al., *WildGuard: Open One-Stop Moderation Tools for Safety Risks, Jailbreaks, and Refusals of LLMs*, 2024 |
-  185| | WildJailbreak | WildJailbreak held-back rows (`dev_holdout_p4`) | ODC-BY; gated: access on accepting the AI2 Responsible Use Guidelines, for research purposes | Jiang et al., *WildTeaming at Scale: From In-the-Wild Jailbreaks to (Adversarially) Safer Language Models*, 2024 |
+  184| | WildGuardMix | `wildguardtest_prompt`, WildGuardMix held-back rows (`dev_holdout_p3`) | ODC-BY; gated: access on accepting the AI2 Responsible Use Guidelines | Han et al., *WildGuard: Open One-Stop Moderation Tools for Safety Risks, Jailbreaks, and Refusals of LLMs*, 2024 |
+  185| | WildJailbreak | WildJailbreak held-back rows (`dev_holdout_p4`) | ODC-BY; gated: access on accepting the AI2 Responsible Use Guidelines | Jiang et al., *WildTeaming at Scale: From In-the-Wild Jailbreaks to (Adversarially) Safer Language Models*, 2024 |
   186| | WildChat-1M | training only (40,000 first user turns) | ODC-BY | Zhao, Ren, Hessel, Cardie, Choi and Deng, *WildChat: 1M ChatGPT Interaction Logs in the Wild*, ICLR 2024 |
   187| | HarmAug generated dataset (`hbseong/HarmAug_generated_dataset`) | training only (instructions) | Apache-2.0 | Lee et al., *HarmAug*, ICLR 2025 |
   188| | paired prompts (this project) | paired prompts (`twins_prompt`) | generated for this project; no third-party source | — |
