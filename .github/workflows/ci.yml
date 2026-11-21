@@ -1,0 +1,51 @@
+name: tests
+
+# Runs the unit tests in training/ (CPU only, synthetic data, no downloads).
+# Two jobs so the quick suites don't wait on torch: test_v6_bow.py is the only
+# file that imports torch / transformers (it builds a tiny random DeBERTa).
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install
+        # requirements.txt pins numpy, pandas and scikit-learn; modal is only
+        # imported (never called) by r3_committee/test_r3_committee.py.
+        run: pip install -r requirements.txt pytest modal
+      - name: Test
+        run: python -m pytest -q training --ignore=training/test_v6_bow.py
+
+  train:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - name: Install
+        # CPU-only torch wheel first (no CUDA download), then the pinned
+        # scoring requirements, which it already satisfies.
+        run: |
+          pip install torch==2.12.1 --index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements-scoring.txt scikit-learn==1.9.0 "accelerate>=1.1.0" pytest
+      - name: Test
+        run: python -m pytest -q training/test_v6_bow.py
