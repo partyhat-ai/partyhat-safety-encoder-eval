@@ -1,8 +1,8 @@
 # MANIFEST: release 2.0 evidence bundle (no dataset text)
 
-208 files, 36,100,538 bytes in total (this manifest excluded). sha256 · bytes · path.
+208 files, 36,100,492 bytes in total (this manifest excluded). sha256 · bytes · path.
 
-- `233526d001a8b5087da8bdecb8440ca1ddaf22a9b7eef8f02d5ed78b108eada9` · 21,632 · `README.md`
+- `8a92e1cc17cc5ebd44457d47a3a37e54631b8761949eadee123e135285415646` · 21,586 · `README.md`
 - `52e13d1ec3ce5f7357f4d70832916dae0b461bc11087f1c1341710df56e02fa1` · 7,091 · `attach_labels.py`
 - `28f007132481bccb39ea970f6ca073c03fc72ea7282ce4018596d15d38918ae2` · 33,567 · `dev_ablation.py`
 - `8c59c14b5f101e0429dd31dfb85a82b8d5bb8ae5c7f4a57984ca47c09b38429f` · 1,826 · `latency/qwen3guard_gen_0.6b_A10G_bf16.json`
