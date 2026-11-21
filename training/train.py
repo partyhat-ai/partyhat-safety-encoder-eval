@@ -243,7 +243,9 @@ def parse_args():
                    help="cap rows for a quick smoke test")
     p.add_argument("--push_to_hub", action="store_true")
     p.add_argument("--hub_model_id", default=None)
-    p.add_argument("--private", action="store_true", default=True)
+    p.add_argument("--private", action=argparse.BooleanOptionalAction, default=True,
+                   help="with --push_to_hub, create the Hub repo as private (the default); "
+                        "--no-private creates it public.")
     return p.parse_args()
 
 

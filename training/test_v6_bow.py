@@ -260,3 +260,10 @@ def test_missing_soft_target_is_refused(tmp_path, monkeypatch):
                                       "--soft_label_field", "toxicity_soft"])
     with pytest.raises(SystemExit):
         train.main()
+
+
+def test_private_flag_defaults_on_and_can_be_turned_off(monkeypatch):
+    import train
+    for argv, want in (([], True), (["--private"], True), (["--no-private"], False)):
+        monkeypatch.setattr(sys, "argv", ["train.py", *argv])
+        assert train.parse_args().private is want
