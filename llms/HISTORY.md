@@ -1,10 +1,11 @@
 # partyhat-safety-encoder-eval: commit history
 
-Generated from commit `c9f07cbc80be` (2026-11-20) of github.com/partyhat-ai/partyhat-safety-encoder-eval by `scripts/llms_digest.py`, which `.github/workflows/llms-digest.yml` reruns on every push to `main`, so this text matches the code at that commit.
+Generated from commit `71e076f05978` (2026-11-20) of github.com/partyhat-ai/partyhat-safety-encoder-eval by `scripts/llms_digest.py`, which `.github/workflows/llms-digest.yml` reruns on every push to `main`, so this text matches the code at that commit.
 
-10 commit(s), verbatim from `git log` (commits that only regenerate this digest are left out):
+11 commit(s), verbatim from `git log` (commits that only regenerate this digest are left out):
 
 ```
+71e076f  2026-11-20  Cameron Feather  v6_select: descriptive names, no lambdas
 c9f07cb  2026-11-20  Cameron Feather  Add CI workflow that runs the training unit tests
 5aff49c  2026-11-20  Cameron Feather  test_v6_score: check recipe row counts against the recipes
 0ef01f4  2026-11-20  Cameron Feather  train.py: make --private a real flag; --no-private turns it off

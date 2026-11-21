@@ -1,6 +1,6 @@
 # partyhat-safety-encoder-eval: source and docs, part 7 of 7
 
-Generated from commit `c9f07cbc80be` (2026-11-20) of github.com/partyhat-ai/partyhat-safety-encoder-eval by `scripts/llms_digest.py`, which `.github/workflows/llms-digest.yml` reruns on every push to `main`, so this text matches the code at that commit.
+Generated from commit `71e076f05978` (2026-11-20) of github.com/partyhat-ai/partyhat-safety-encoder-eval by `scripts/llms_digest.py`, which `.github/workflows/llms-digest.yml` reruns on every push to `main`, so this text matches the code at that commit.
 Files `training/v6_committee_targets.py` to `training/v6_select.py`. Lines are numbered as in the repository.
 
 ## `training/v6_committee_targets.py`
@@ -1308,9 +1308,9 @@ Files `training/v6_committee_targets.py` to `training/v6_select.py`. Lines are n
    31| # Two-model averages: each candidate pairs two runs, (variant, seed, variant, seed), per seed.
    32| TWO_MODEL_AVERAGES = {
    33|     "E11": [("R1", 13, "R1", 42), ("R1", 42, "R1", 99), ("R1", 99, "R1", 13)],
-   34|     "E12": [("R1", s, "R2", s) for s in SEEDS],
-   35|     "E13": [("R1", s, "R3", s) for s in SEEDS],
-   36|     "E23": [("R2", s, "R3", s) for s in SEEDS],
+   34|     "E12": [("R1", seed, "R2", seed) for seed in SEEDS],
+   35|     "E13": [("R1", seed, "R3", seed) for seed in SEEDS],
+   36|     "E23": [("R2", seed, "R3", seed) for seed in SEEDS],
    37| }
    38| CANDIDATE_NAMES = RECIPE_NAMES | {
    39|     "E11": "two-model average: base recipe + base recipe (different seeds)",
@@ -1339,193 +1339,242 @@ Files `training/v6_committee_targets.py` to `training/v6_select.py`. Lines are n
    62| def load_run(results, run, dev_scorecards=None):
    63|     """One run's dev scorecards, from v6_results/runs/<run>/scorecards/ or, if dev_scorecards is
    64|     given, from <dev_scorecards>/<run>/ (the evidence bundle's layout)."""
-   65|     d = (pathlib.Path(dev_scorecards) / run if dev_scorecards
-   66|          else pathlib.Path(results) / "runs" / run / "scorecards")
-   67|     if not all((d / f"{n}.json").exists() for n in DEV_SETS):
+   65|     folder = (pathlib.Path(dev_scorecards) / run if dev_scorecards
+   66|               else pathlib.Path(results) / "runs" / run / "scorecards")
+   67|     if not all((folder / f"{set_name}.json").exists() for set_name in DEV_SETS):
    68|         return None
-   69|     return {n: json.load(open(d / f"{n}.json")) for n in DEV_SETS}
+   69|     return {set_name: json.load(open(folder / f"{set_name}.json")) for set_name in DEV_SETS}
    70| 
    71| 
-   72| def combine(ca, cb):
+   72| def combine(scorecards_a, scorecards_b):
    73|     """Two-model average scorecards: mean margin, sigmoid score; items must align by src."""
    74|     out = {}
-   75|     for n in DEV_SETS:
-   76|         ra, rb = ca[n]["rows"], cb[n]["rows"]
-   77|         assert [r["src"] for r in ra] == [r["src"] for r in rb], f"{n}: item order differs"
-   78|         m, p = vm.two_model_average([r["margin"] for r in ra], [r["margin"] for r in rb])
-   79|         out[n] = {"rows": [dict(r, margin=float(mm), score=float(pp)) for r, mm, pp in zip(ra, m, p)]}
-   80|     return out
-   81| 
-   82| 
-   83| def summarise(reps):
-   84|     """reps: list of dev reports, one per training run. Mean and range of every numeric key."""
-   85|     keys = [k for k, v in reps[0].items() if isinstance(v, (int, float)) and v is not None]
-   86|     out = {}
-   87|     for k in keys:
-   88|         vals = [r[k] for r in reps if r.get(k) is not None]
-   89|         if len(vals) == len(reps):
-   90|             out[k] = {"mean": float(np.mean(vals)), "range": float(max(vals) - min(vals)),
-   91|                       "values": vals}
-   92|     return out
-   93| 
-   94| 
-   95| def choose_candidate(cands, trace):
-   96|     """Pick the leading candidate by intent score. A single model must beat the base recipe (R1)
-   97|     by more than the larger of their run-to-run ranges, and a two-model average must beat that
-   98|     single model the same way. Returns the chosen candidate."""
-   99|     di = lambda c: cands[c]["dev_intent"]["mean"]           # noqa: E731
-  100|     rg = lambda c: cands[c]["dev_intent"]["range"]          # noqa: E731
-  101|     singles = sorted([c for c in cands if c in SINGLE_MODELS], key=di, reverse=True)
-  102|     best = singles[0]
-  103|     if best != "R1" and di(best) - di("R1") < max(rg(best), rg("R1")):
-  104|         trace.append(f"best single model: {best} leads R1 by {di(best) - di('R1'):.4f}, less than "
-  105|                      f"the larger run-to-run range {max(rg(best), rg('R1')):.4f}, so R1 stays")
-  106|         best = "R1"
-  107|     else:
-  108|         trace.append(f"best single model: {best} (mean intent score {di(best):.4f})")
-  109|     averages = sorted([c for c in cands if c in TWO_MODEL_AVERAGES], key=di, reverse=True)
-  110|     if averages:
-  111|         t = averages[0]
-  112|         lead, need = di(t) - di(best), max(rg(t), rg(best))
-  113|         if lead > need:
-  114|             trace.append(f"best two-model average: {t} leads {best} by {lead:.4f} > {need:.4f}, "
-  115|                          f"so {t} replaces it")
-  116|             return t
-  117|         trace.append(f"best two-model average: {t} leads {best} by {lead:.4f}, not > {need:.4f}; "
-  118|                      f"{best} stands")
-  119|     return best
-  120| 
-  121| 
-  122| def select(cands):
-  123|     """Choose a candidate, then check it against the base recipe's tc_val AUPRC. A candidate that
-  124|     trails R1 by more than TOXICCHAT_AUPRC_MARGIN is removed and the choice is made again from
-  125|     the rest, until one passes. R1 always passes. Returns (selected, trace)."""
-  126|     if "R1" not in cands:
-  127|         raise SystemExit("R1 does not have three dev-scored training runs; nothing can be selected")
-  128|     trace, remaining = [], dict(cands)
-  129|     r1 = cands["R1"]["tc_val_auprc"]["mean"]
-  130|     while True:
-  131|         c = choose_candidate(remaining, trace)
-  132|         gap = r1 - cands[c]["tc_val_auprc"]["mean"]
-  133|         if c == "R1" or gap <= TOXICCHAT_AUPRC_MARGIN:
-  134|             trace.append(f"ToxicChat check: {c} tc_val AUPRC {cands[c]['tc_val_auprc']['mean']:.4f} "
-  135|                          f"(R1 {r1:.4f}; gap {gap:.4f} <= {TOXICCHAT_AUPRC_MARGIN}): selected")
-  136|             return c, trace
-  137|         trace.append(f"ToxicChat check: {c} fails (tc_val AUPRC gap {gap:.4f} > "
-  138|                      f"{TOXICCHAT_AUPRC_MARGIN}); removed, and the choice is made again")
-  139|         del remaining[c]
-  140| 
-  141| 
-  142| def main(argv=None):
-  143|     a = argparse.ArgumentParser()
-  144|     a.add_argument("--results", default="v6_results")
-  145|     a.add_argument("--out", default="V6_SELECTION.md")
-  146|     a.add_argument("--dev-scorecards", default=None,
-  147|                    help="read <dir>/<run>/<set>.json (the evidence bundle's scorecards/dev, labelled)")
-  148|     a = a.parse_args(argv)
-  149|     rerun = a.dev_scorecards is not None
-  150| 
-  151|     runs = {}
-  152|     for variant in SINGLE_MODELS:
-  153|         for s in SEEDS:
-  154|             c = load_run(a.results, f"{variant}_s{s}", a.dev_scorecards)
-  155|             if c is not None:
-  156|                 runs[(variant, s)] = c
-  157|     reports, cands, runs_of = {}, {}, {}
-  158|     for (variant, s), c in runs.items():
-  159|         reports[f"{variant}_s{s}"] = vm.dev_report(dev_sets_for_report(c))
-  160|     for variant in SINGLE_MODELS:
-  161|         if all((variant, s) in runs for s in SEEDS):
-  162|             runs_of[variant] = [f"{variant}_s{s}" for s in SEEDS]
-  163|             cands[variant] = summarise([reports[r] for r in runs_of[variant]])
-  164|     for name, pairs in TWO_MODEL_AVERAGES.items():
-  165|         if all((x, s) in runs and (y, t) in runs for x, s, y, t in pairs):
-  166|             reps = []
-  167|             for x, s, y, t in pairs:
-  168|                 key = f"{name}[{x}_s{s}+{y}_s{t}]"
-  169|                 reports[key] = vm.dev_report(dev_sets_for_report(combine(runs[(x, s)], runs[(y, t)])))
-  170|                 reps.append(key)
-  171|             runs_of[name] = reps
-  172|             cands[name] = summarise([reports[r] for r in reps])
-  173| 
-  174|     sel, trace = select(cands)
-  175|     s = cands[sel]
-  176|     gates = {"G1": {"value": s["dev_intent"]["mean"], "bar": INTENT_SCORE_BAR,
-  177|                     "pass": s["dev_intent"]["mean"] >= INTENT_SCORE_BAR},
-  178|              "G2": {"value": s["tc_val_auprc"]["mean"], "bar": TOXICCHAT_AUPRC_BAR,
-  179|                     "pass": s["tc_val_auprc"]["mean"] >= TOXICCHAT_AUPRC_BAR},
-  180|              "G3": {"value": s["saturation"]["mean"], "bar": PINNED_SCORE_LIMIT,
-  181|                     "pass": s["saturation"]["mean"] < PINNED_SCORE_LIMIT}}
-  182|     shipped = runs_of[sel][0]
-  183|     thr = {r: {k: reports[r][k] for k in ("t_gate", "t_screen", "t_bal")} for r in runs_of[sel]}
-  184|     out = {"B": RELEASE_1_TRIAL_INTENT_SCORE, "candidates": cands, "replicates": runs_of,
-  185|            "run_reports": reports, "selected": sel, "trace": trace, "gates": gates,
-  186|            "all_gates_pass": all(g["pass"] for g in gates.values()),
-  187|            "shipped_replicate": shipped, "thresholds": thr}
-  188|     pathlib.Path(a.results).mkdir(parents=True, exist_ok=True)
-  189|     pathlib.Path(a.results, "selection.json").write_text(json.dumps(out, indent=1))
-  190| 
-  191|     source = ("Recomputed by `v6_select.py` from the evidence bundle's development scorecards."
-  192|               if rerun else
-  193|               "Computed by `v6_select.py` from per-item dev scorecards only. No test set has been scored "
-  194|               "for any v6 checkpoint.")
-  195|     L = ["# V6_SELECTION: dev-set selection", "",
-  196|          f"{source} Full numbers: `{pathlib.Path(a.results, 'selection.json')}`.", "",
-  197|          f"Release 1.0 trial intent score = {RELEASE_1_TRIAL_INTENT_SCORE:.4f}; intent score bar = "
-  198|          f"{INTENT_SCORE_BAR:.4f}; ToxicChat AUPRC bar = {TOXICCHAT_AUPRC_BAR}; share of scores "
-  199|          f"pinned near 0 or 1 must stay below {PINNED_SCORE_LIMIT}.", "",
-  200|          "## Candidates (mean over three training runs [range])", "",
-  201|          "| Candidate | What it is | Training runs | Intent score | Twins AUROC | dev_pair2 AUROC | Pair acc | tc_val AUPRC | aegis_val AUROC | Pinned scores |",
-  202|          "|---|---|---|---|---|---|---|---|---|---|"]
-  203|     f = lambda c, k: f"{cands[c][k]['mean']:.4f} [{cands[c][k]['range']:.4f}]"  # noqa: E731
-  204|     for c in cands:
-  205|         L.append(f"| {c} | {CANDIDATE_NAMES.get(c, '')} | {', '.join(runs_of[c])} | {f(c, 'dev_intent')} | "
-  206|                  f"{f(c, 'twins_auroc')} | {f(c, 'dev_pair2_auroc')} | {f(c, 'twins_pair_acc')} | "
-  207|                  f"{f(c, 'tc_val_auprc')} | {f(c, 'aegis_val_auroc')} | {f(c, 'saturation')} |")
-  208|     L += ["", "## Every run", "",
-  209|           "| Run | Intent score | Twins | dev_pair2 | tc_val AUPRC | aegis_val AUROC | Held-back WildGuardMix AUROC | Held-back WildJailbreak AUROC | Held-back FalseReject FRR at strict | Pinned scores | Strict | Pre-screen | Balanced |",
-  210|           "|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
-  211|     for r, d in reports.items():
-  212|         L.append(f"| {r} | {d['dev_intent']:.4f} | {d['twins_auroc']:.4f} | {d['dev_pair2_auroc']:.4f} | "
-  213|                  f"{d['tc_val_auprc']:.4f} | {d['aegis_val_auroc']:.4f} | {d['dev_holdout_p3_auroc']:.4f} | "
-  214|                  f"{d['dev_holdout_p4_auroc']:.4f} | {d['dev_holdout_p5_frr_at_gate']:.4f} | {d['saturation']:.4f} | "
-  215|                  f"{d['t_gate']!r} | {d['t_screen']!r} | {d['t_bal']!r} |")
-  216|     L += ["", "## Selection", ""] + [f"- {t}" for t in trace]
-  217|     L += ["", f"**Selected: {name_of(sel)}.** Shipped model (fixed before training): the first "
-  218|           f"training run, `{shipped}`.", "",
-  219|           "## Release bars (on the selected candidate's mean over its training runs)", ""]
-  220|     for k, g in gates.items():
-  221|         L.append(f"- {GATE_NAMES[k]}: {g['value']:.4f} vs {g['bar']:.4f}: **{'PASS' if g['pass'] else 'FAIL'}**")
-  222|     L += ["", f"**All bars: {'PASS: sealing this file unlocks the test sets' if out['all_gates_pass'] else 'FAIL: the test sets stay locked'}.**",
-  223|           "", "## Frozen thresholds (per training run, on P(unsafe) = sigmoid(margin))", "",
-  224|           "| Training run | Strict | Pre-screen | Balanced |", "|---|---|---|---|"]
-  225|     for r, t in thr.items():
-  226|         L.append(f"| {r}{' (shipped)' if r == shipped else ''} | {t['t_gate']!r} | {t['t_screen']!r} | {t['t_bal']!r} |")
-  227|     if rerun:
-  228|         L += [""]
-  229|     else:
-  230|         # The Record states how the selection was made. Those statements are written, not computed;
-  231|         # R4's figures are computed like every other number in this file.
-  232|         r4 = cands.get("R4")
-  233|         r4_line = (f"- R4 was added after the first round's dev results had been seen and before any v6 "
-  234|                    f"test score. Its outcome here: intent score {r4['dev_intent']['mean']:.4f} (range "
-  235|                    f"{r4['dev_intent']['range']:.4f}), tc_val AUPRC {r4['tc_val_auprc']['mean']:.4f}. "
-  236|                    f"**R4 was {'' if sel == 'R4' else 'not '}selected.**" if r4 else
-  237|                    "- R4 has no three dev-scored training runs.")
-  238|         L += ["", "## Record", "",
-  239|               "- One selection, made after every launched run was dev-scored: the first round of "
-  240|               "training runs (R1, R0, R2), then R3 and R4. The decision to train R3 used no dev result.",
-  241|               r4_line,
-  242|               "- Dev results could be seen as soon as each run finished. None of them could change this "
-  243|               "selection, since the selection rule is mechanical.",
-  244|               "- No v6 checkpoint has been scored on any test set.", "",
-  245|               "The selection is not revisited after any test set is seen.", ""]
-  246|     pathlib.Path(a.out).write_text("\n".join(L))
-  247|     print("\n".join(trace))
-  248|     print(json.dumps({"selected": sel, "selected_name": CANDIDATE_NAMES.get(sel, sel),
-  249|                       "gates": gates, "shipped": shipped}, indent=1))
-  250| 
-  251| 
-  252| if __name__ == "__main__":
-  253|     main()
+   75|     for set_name in DEV_SETS:
+   76|         rows_a, rows_b = scorecards_a[set_name]["rows"], scorecards_b[set_name]["rows"]
+   77|         assert [row["src"] for row in rows_a] == [row["src"] for row in rows_b], \
+   78|             f"{set_name}: item order differs"
+   79|         margins, scores = vm.two_model_average([row["margin"] for row in rows_a],
+   80|                                                [row["margin"] for row in rows_b])
+   81|         out[set_name] = {"rows": [dict(row, margin=float(margin), score=float(score))
+   82|                                   for row, margin, score in zip(rows_a, margins, scores)]}
+   83|     return out
+   84| 
+   85| 
+   86| def summarise(run_reports):
+   87|     """run_reports: list of dev reports, one per training run. Mean and range of every numeric key."""
+   88|     keys = [key for key, value in run_reports[0].items()
+   89|             if isinstance(value, (int, float)) and value is not None]
+   90|     out = {}
+   91|     for key in keys:
+   92|         values = [report[key] for report in run_reports if report.get(key) is not None]
+   93|         if len(values) == len(run_reports):
+   94|             out[key] = {"mean": float(np.mean(values)), "range": float(max(values) - min(values)),
+   95|                         "values": values}
+   96|     return out
+   97| 
+   98| 
+   99| def mean_intent(cands, candidate):
+  100|     """The candidate's intent score, averaged over its training runs."""
+  101|     return cands[candidate]["dev_intent"]["mean"]
+  102| 
+  103| 
+  104| def intent_range(cands, candidate):
+  105|     """The spread (max - min) of the candidate's intent score across its training runs."""
+  106|     return cands[candidate]["dev_intent"]["range"]
+  107| 
+  108| 
+  109| def choose_candidate(cands, trace):
+  110|     """Pick the leading candidate by intent score. A single model must beat the base recipe (R1)
+  111|     by more than the larger of their run-to-run ranges, and a two-model average must beat that
+  112|     single model the same way. Returns the chosen candidate."""
+  113|     def intent(candidate):
+  114|         return mean_intent(cands, candidate)
+  115| 
+  116|     def spread(candidate):
+  117|         return intent_range(cands, candidate)
+  118| 
+  119|     singles = sorted([cand for cand in cands if cand in SINGLE_MODELS], key=intent, reverse=True)
+  120|     best = singles[0]
+  121|     if best != "R1" and intent(best) - intent("R1") < max(spread(best), spread("R1")):
+  122|         trace.append(f"best single model: {best} leads R1 by {intent(best) - intent('R1'):.4f}, less than "
+  123|                      f"the larger run-to-run range {max(spread(best), spread('R1')):.4f}, so R1 stays")
+  124|         best = "R1"
+  125|     else:
+  126|         trace.append(f"best single model: {best} (mean intent score {intent(best):.4f})")
+  127|     averages = sorted([cand for cand in cands if cand in TWO_MODEL_AVERAGES], key=intent, reverse=True)
+  128|     if averages:
+  129|         top_average = averages[0]
+  130|         lead, needed = intent(top_average) - intent(best), max(spread(top_average), spread(best))
+  131|         if lead > needed:
+  132|             trace.append(f"best two-model average: {top_average} leads {best} by {lead:.4f} > {needed:.4f}, "
+  133|                          f"so {top_average} replaces it")
+  134|             return top_average
+  135|         trace.append(f"best two-model average: {top_average} leads {best} by {lead:.4f}, not > {needed:.4f}; "
+  136|                      f"{best} stands")
+  137|     return best
+  138| 
+  139| 
+  140| def select(cands):
+  141|     """Choose a candidate, then check it against the base recipe's tc_val AUPRC. A candidate that
+  142|     trails R1 by more than TOXICCHAT_AUPRC_MARGIN is removed and the choice is made again from
+  143|     the rest, until one passes. R1 always passes. Returns (selected, trace)."""
+  144|     if "R1" not in cands:
+  145|         raise SystemExit("R1 does not have three dev-scored training runs; nothing can be selected")
+  146|     trace, remaining = [], dict(cands)
+  147|     r1_auprc = cands["R1"]["tc_val_auprc"]["mean"]
+  148|     while True:
+  149|         candidate = choose_candidate(remaining, trace)
+  150|         candidate_auprc = cands[candidate]["tc_val_auprc"]["mean"]
+  151|         gap = r1_auprc - candidate_auprc
+  152|         if candidate == "R1" or gap <= TOXICCHAT_AUPRC_MARGIN:
+  153|             trace.append(f"ToxicChat check: {candidate} tc_val AUPRC {candidate_auprc:.4f} "
+  154|                          f"(R1 {r1_auprc:.4f}; gap {gap:.4f} <= {TOXICCHAT_AUPRC_MARGIN}): selected")
+  155|             return candidate, trace
+  156|         trace.append(f"ToxicChat check: {candidate} fails (tc_val AUPRC gap {gap:.4f} > "
+  157|                      f"{TOXICCHAT_AUPRC_MARGIN}); removed, and the choice is made again")
+  158|         del remaining[candidate]
+  159| 
+  160| 
+  161| def build_candidates(results, dev_scorecards):
+  162|     """Load every training run's dev scorecards and summarise each eligible candidate.
+  163| 
+  164|     Returns (run_reports, cands, runs_of): the dev report of every training run (and of every
+  165|     two-model pairing), each candidate's summary over its runs, and the runs behind each candidate.
+  166|     """
+  167|     scorecards = {}
+  168|     for variant in SINGLE_MODELS:
+  169|         for seed in SEEDS:
+  170|             run_scorecards = load_run(results, f"{variant}_s{seed}", dev_scorecards)
+  171|             if run_scorecards is not None:
+  172|                 scorecards[(variant, seed)] = run_scorecards
+  173|     run_reports, cands, runs_of = {}, {}, {}
+  174|     for (variant, seed), run_scorecards in scorecards.items():
+  175|         run_reports[f"{variant}_s{seed}"] = vm.dev_report(dev_sets_for_report(run_scorecards))
+  176|     for variant in SINGLE_MODELS:
+  177|         if all((variant, seed) in scorecards for seed in SEEDS):
+  178|             runs_of[variant] = [f"{variant}_s{seed}" for seed in SEEDS]
+  179|             cands[variant] = summarise([run_reports[run] for run in runs_of[variant]])
+  180|     for name, pairs in TWO_MODEL_AVERAGES.items():
+  181|         if all((variant_a, seed_a) in scorecards and (variant_b, seed_b) in scorecards
+  182|                for variant_a, seed_a, variant_b, seed_b in pairs):
+  183|             pair_runs = []
+  184|             for variant_a, seed_a, variant_b, seed_b in pairs:
+  185|                 key = f"{name}[{variant_a}_s{seed_a}+{variant_b}_s{seed_b}]"
+  186|                 averaged = combine(scorecards[(variant_a, seed_a)], scorecards[(variant_b, seed_b)])
+  187|                 run_reports[key] = vm.dev_report(dev_sets_for_report(averaged))
+  188|                 pair_runs.append(key)
+  189|             runs_of[name] = pair_runs
+  190|             cands[name] = summarise([run_reports[run] for run in pair_runs])
+  191|     return run_reports, cands, runs_of
+  192| 
+  193| 
+  194| def check_gates(summary):
+  195|     """The three release bars, checked on a candidate's summary (means over its training runs)."""
+  196|     intent = summary["dev_intent"]["mean"]
+  197|     auprc = summary["tc_val_auprc"]["mean"]
+  198|     pinned = summary["saturation"]["mean"]
+  199|     return {"G1": {"value": intent, "bar": INTENT_SCORE_BAR, "pass": intent >= INTENT_SCORE_BAR},
+  200|             "G2": {"value": auprc, "bar": TOXICCHAT_AUPRC_BAR, "pass": auprc >= TOXICCHAT_AUPRC_BAR},
+  201|             "G3": {"value": pinned, "bar": PINNED_SCORE_LIMIT, "pass": pinned < PINNED_SCORE_LIMIT}}
+  202| 
+  203| 
+  204| def mean_and_range(cands, candidate, metric):
+  205|     """Table cell: the candidate's mean for a metric, with its run-to-run range in brackets."""
+  206|     stats = cands[candidate][metric]
+  207|     return f"{stats['mean']:.4f} [{stats['range']:.4f}]"
+  208| 
+  209| 
+  210| def main(argv=None):
+  211|     parser = argparse.ArgumentParser()
+  212|     parser.add_argument("--results", default="v6_results")
+  213|     parser.add_argument("--out", default="V6_SELECTION.md")
+  214|     parser.add_argument("--dev-scorecards", default=None,
+  215|                         help="read <dir>/<run>/<set>.json (the evidence bundle's scorecards/dev, labelled)")
+  216|     args = parser.parse_args(argv)
+  217|     rerun = args.dev_scorecards is not None
+  218| 
+  219|     run_reports, cands, runs_of = build_candidates(args.results, args.dev_scorecards)
+  220|     selected, trace = select(cands)
+  221|     gates = check_gates(cands[selected])
+  222|     shipped = runs_of[selected][0]
+  223|     thresholds = {run: {key: run_reports[run][key] for key in ("t_gate", "t_screen", "t_bal")}
+  224|                   for run in runs_of[selected]}
+  225|     out = {"B": RELEASE_1_TRIAL_INTENT_SCORE, "candidates": cands, "replicates": runs_of,
+  226|            "run_reports": run_reports, "selected": selected, "trace": trace, "gates": gates,
+  227|            "all_gates_pass": all(gate["pass"] for gate in gates.values()),
+  228|            "shipped_replicate": shipped, "thresholds": thresholds}
+  229|     pathlib.Path(args.results).mkdir(parents=True, exist_ok=True)
+  230|     pathlib.Path(args.results, "selection.json").write_text(json.dumps(out, indent=1))
+  231| 
+  232|     source = ("Recomputed by `v6_select.py` from the evidence bundle's development scorecards."
+  233|               if rerun else
+  234|               "Computed by `v6_select.py` from per-item dev scorecards only. No test set has been scored "
+  235|               "for any v6 checkpoint.")
+  236|     lines = ["# V6_SELECTION: dev-set selection", "",
+  237|              f"{source} Full numbers: `{pathlib.Path(args.results, 'selection.json')}`.", "",
+  238|              f"Release 1.0 trial intent score = {RELEASE_1_TRIAL_INTENT_SCORE:.4f}; intent score bar = "
+  239|              f"{INTENT_SCORE_BAR:.4f}; ToxicChat AUPRC bar = {TOXICCHAT_AUPRC_BAR}; share of scores "
+  240|              f"pinned near 0 or 1 must stay below {PINNED_SCORE_LIMIT}.", "",
+  241|              "## Candidates (mean over three training runs [range])", "",
+  242|              "| Candidate | What it is | Training runs | Intent score | Twins AUROC | dev_pair2 AUROC | Pair acc | tc_val AUPRC | aegis_val AUROC | Pinned scores |",
+  243|              "|---|---|---|---|---|---|---|---|---|---|"]
+  244|     for cand in cands:
+  245|         cells = [mean_and_range(cands, cand, metric)
+  246|                  for metric in ("dev_intent", "twins_auroc", "dev_pair2_auroc", "twins_pair_acc",
+  247|                                 "tc_val_auprc", "aegis_val_auroc", "saturation")]
+  248|         lines.append(f"| {cand} | {CANDIDATE_NAMES.get(cand, '')} | {', '.join(runs_of[cand])} | "
+  249|                      + " | ".join(cells) + " |")
+  250|     lines += ["", "## Every run", "",
+  251|               "| Run | Intent score | Twins | dev_pair2 | tc_val AUPRC | aegis_val AUROC | Held-back WildGuardMix AUROC | Held-back WildJailbreak AUROC | Held-back FalseReject FRR at strict | Pinned scores | Strict | Pre-screen | Balanced |",
+  252|               "|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
+  253|     for run, report in run_reports.items():
+  254|         lines.append(f"| {run} | {report['dev_intent']:.4f} | {report['twins_auroc']:.4f} | "
+  255|                      f"{report['dev_pair2_auroc']:.4f} | {report['tc_val_auprc']:.4f} | "
+  256|                      f"{report['aegis_val_auroc']:.4f} | {report['dev_holdout_p3_auroc']:.4f} | "
+  257|                      f"{report['dev_holdout_p4_auroc']:.4f} | {report['dev_holdout_p5_frr_at_gate']:.4f} | "
+  258|                      f"{report['saturation']:.4f} | {report['t_gate']!r} | {report['t_screen']!r} | "
+  259|                      f"{report['t_bal']!r} |")
+  260|     lines += ["", "## Selection", ""] + [f"- {step}" for step in trace]
+  261|     lines += ["", f"**Selected: {name_of(selected)}.** Shipped model (fixed before training): the first "
+  262|               f"training run, `{shipped}`.", "",
+  263|               "## Release bars (on the selected candidate's mean over its training runs)", ""]
+  264|     for gate_id, gate in gates.items():
+  265|         verdict = "PASS" if gate["pass"] else "FAIL"
+  266|         lines.append(f"- {GATE_NAMES[gate_id]}: {gate['value']:.4f} vs {gate['bar']:.4f}: **{verdict}**")
+  267|     all_bars = ("PASS: sealing this file unlocks the test sets" if out["all_gates_pass"]
+  268|                 else "FAIL: the test sets stay locked")
+  269|     lines += ["", f"**All bars: {all_bars}.**",
+  270|               "", "## Frozen thresholds (per training run, on P(unsafe) = sigmoid(margin))", "",
+  271|               "| Training run | Strict | Pre-screen | Balanced |", "|---|---|---|---|"]
+  272|     for run, run_thresholds in thresholds.items():
+  273|         label = f"{run} (shipped)" if run == shipped else run
+  274|         lines.append(f"| {label} | {run_thresholds['t_gate']!r} | {run_thresholds['t_screen']!r} | "
+  275|                      f"{run_thresholds['t_bal']!r} |")
+  276|     if rerun:
+  277|         lines += [""]
+  278|     else:
+  279|         # The Record states how the selection was made. Those statements are written, not computed;
+  280|         # R4's figures are computed like every other number in this file.
+  281|         r4 = cands.get("R4")
+  282|         r4_line = (f"- R4 was added after the first round's dev results had been seen and before any v6 "
+  283|                    f"test score. Its outcome here: intent score {r4['dev_intent']['mean']:.4f} (range "
+  284|                    f"{r4['dev_intent']['range']:.4f}), tc_val AUPRC {r4['tc_val_auprc']['mean']:.4f}. "
+  285|                    f"**R4 was {'' if selected == 'R4' else 'not '}selected.**" if r4 else
+  286|                    "- R4 has no three dev-scored training runs.")
+  287|         lines += ["", "## Record", "",
+  288|                   "- One selection, made after every launched run was dev-scored: the first round of "
+  289|                   "training runs (R1, R0, R2), then R3 and R4. The decision to train R3 used no dev result.",
+  290|                   r4_line,
+  291|                   "- Dev results could be seen as soon as each run finished. None of them could change this "
+  292|                   "selection, since the selection rule is mechanical.",
+  293|                   "- No v6 checkpoint has been scored on any test set.", "",
+  294|                   "The selection is not revisited after any test set is seen.", ""]
+  295|     pathlib.Path(args.out).write_text("\n".join(lines))
+  296|     print("\n".join(trace))
+  297|     print(json.dumps({"selected": selected, "selected_name": CANDIDATE_NAMES.get(selected, selected),
+  298|                       "gates": gates, "shipped": shipped}, indent=1))
+  299| 
+  300| 
+  301| if __name__ == "__main__":
+  302|     main()
 ```

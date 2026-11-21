@@ -1,6 +1,6 @@
 # partyhat-safety-encoder-eval: data samples
 
-Generated from commit `c9f07cbc80be` (2026-11-20) of github.com/partyhat-ai/partyhat-safety-encoder-eval by `scripts/llms_digest.py`, which `.github/workflows/llms-digest.yml` reruns on every push to `main`, so this text matches the code at that commit.
+Generated from commit `71e076f05978` (2026-11-20) of github.com/partyhat-ai/partyhat-safety-encoder-eval by `scripts/llms_digest.py`, which `.github/workflows/llms-digest.yml` reruns on every push to `main`, so this text matches the code at that commit.
 
 Data files are not reproduced in full. One sample per top-level folder, first 40 lines:
 

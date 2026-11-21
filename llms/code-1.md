@@ -1,6 +1,6 @@
 # partyhat-safety-encoder-eval: source and docs, part 1 of 7
 
-Generated from commit `c9f07cbc80be` (2026-11-20) of github.com/partyhat-ai/partyhat-safety-encoder-eval by `scripts/llms_digest.py`, which `.github/workflows/llms-digest.yml` reruns on every push to `main`, so this text matches the code at that commit.
+Generated from commit `71e076f05978` (2026-11-20) of github.com/partyhat-ai/partyhat-safety-encoder-eval by `scripts/llms_digest.py`, which `.github/workflows/llms-digest.yml` reruns on every push to `main`, so this text matches the code at that commit.
 Files `.github/workflows/ci.yml` to `evidence/README.md`. Lines are numbered as in the repository.
 
 ## `.github/workflows/ci.yml`

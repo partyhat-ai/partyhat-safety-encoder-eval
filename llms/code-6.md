@@ -1,6 +1,6 @@
 # partyhat-safety-encoder-eval: source and docs, part 6 of 7
 
-Generated from commit `c9f07cbc80be` (2026-11-20) of github.com/partyhat-ai/partyhat-safety-encoder-eval by `scripts/llms_digest.py`, which `.github/workflows/llms-digest.yml` reruns on every push to `main`, so this text matches the code at that commit.
+Generated from commit `71e076f05978` (2026-11-20) of github.com/partyhat-ai/partyhat-safety-encoder-eval by `scripts/llms_digest.py`, which `.github/workflows/llms-digest.yml` reruns on every push to `main`, so this text matches the code at that commit.
 Files `training/test_v6_bow.py` to `training/v6_build.py`. Lines are numbered as in the repository.
 
 ## `training/test_v6_bow.py`
@@ -735,52 +735,52 @@ Files `training/test_v6_bow.py` to `training/v6_build.py`. Lines are numbered as
 
 ```python
     1| """Tests for v6_select.select (the selection rule and the ToxicChat check) on synthetic candidate summaries."""
-    2| import v6_select as s
+    2| import v6_select
     3| 
     4| 
-    5| def c(intent, rng, auprc):
-    6|     return {"dev_intent": {"mean": intent, "range": rng}, "tc_val_auprc": {"mean": auprc, "range": 0.0}}
+    5| def summary(intent, intent_range, auprc):
+    6|     return {"dev_intent": {"mean": intent, "range": intent_range}, "tc_val_auprc": {"mean": auprc, "range": 0.0}}
     7| 
     8| 
     9| def test_r1_wins_when_lead_is_within_range():
-   10|     sel, _ = s.select({"R1": c(0.80, 0.03, 0.85), "R0": c(0.82, 0.01, 0.85)})
-   11|     assert sel == "R1"
+   10|     selected, _ = v6_select.select({"R1": summary(0.80, 0.03, 0.85), "R0": summary(0.82, 0.01, 0.85)})
+   11|     assert selected == "R1"
    12| 
    13| 
    14| def test_clear_single_model_winner():
-   15|     sel, _ = s.select({"R1": c(0.80, 0.01, 0.85), "R2": c(0.85, 0.02, 0.85)})
-   16|     assert sel == "R2"
+   15|     selected, _ = v6_select.select({"R1": summary(0.80, 0.01, 0.85), "R2": summary(0.85, 0.02, 0.85)})
+   16|     assert selected == "R2"
    17| 
    18| 
    19| def test_two_model_average_needs_to_beat_range():
-   20|     base = {"R1": c(0.80, 0.01, 0.85)}
-   21|     assert s.select(base | {"E11": c(0.81, 0.02, 0.85)})[0] == "R1"
-   22|     assert s.select(base | {"E11": c(0.84, 0.02, 0.85)})[0] == "E11"
+   20|     base = {"R1": summary(0.80, 0.01, 0.85)}
+   21|     assert v6_select.select(base | {"E11": summary(0.81, 0.02, 0.85)})[0] == "R1"
+   22|     assert v6_select.select(base | {"E11": summary(0.84, 0.02, 0.85)})[0] == "E11"
    23| 
    24| 
    25| def test_guardrail_falls_back_in_order_r1_last():
-   26|     cands = {"R1": c(0.80, 0.01, 0.86), "R2": c(0.86, 0.01, 0.83), "E12": c(0.90, 0.01, 0.80),
-   27|              "R0": c(0.82, 0.005, 0.855)}
-   28|     sel, trace = s.select(cands)
+   26|     cands = {"R1": summary(0.80, 0.01, 0.86), "R2": summary(0.86, 0.01, 0.83), "E12": summary(0.90, 0.01, 0.80),
+   27|              "R0": summary(0.82, 0.005, 0.855)}
+   28|     selected, trace = v6_select.select(cands)
    29|     # E12 replaces R2, fails the ToxicChat check; R2 fails it too; R0 passes
-   30|     assert sel == "R0" and any("E12 fails" in t for t in trace)
-   31|     cands["R0"] = c(0.82, 0.005, 0.70)
-   32|     assert s.select(cands)[0] == "R1"
+   30|     assert selected == "R0" and any("E12 fails" in step for step in trace)
+   31|     cands["R0"] = summary(0.82, 0.005, 0.70)
+   32|     assert v6_select.select(cands)[0] == "R1"
    33| 
    34| 
    35| def test_after_a_failed_single_model_the_next_must_still_beat_r1_by_its_range():
    36|     # R2 fails the ToxicChat check; R0 leads R1 by 0.02 < R1's range 0.03, so the choice is R1
-   37|     cands = {"R1": c(0.80, 0.03, 0.86), "R2": c(0.90, 0.01, 0.80), "R0": c(0.82, 0.005, 0.86)}
-   38|     sel, trace = s.select(cands)
-   39|     assert sel == "R1" and any("R2 fails" in t for t in trace)
+   37|     cands = {"R1": summary(0.80, 0.03, 0.86), "R2": summary(0.90, 0.01, 0.80), "R0": summary(0.82, 0.005, 0.86)}
+   38|     selected, trace = v6_select.select(cands)
+   39|     assert selected == "R1" and any("R2 fails" in step for step in trace)
    40| 
    41| 
    42| def test_after_a_failed_two_model_average_the_other_averages_are_reconsidered():
-   43|     cands = {"R1": c(0.80, 0.01, 0.86), "E12": c(0.90, 0.01, 0.80), "E11": c(0.86, 0.01, 0.86)}
-   44|     sel, trace = s.select(cands)
-   45|     assert sel == "E11" and any("E12 fails" in t for t in trace)
-   46|     cands["E11"] = c(0.805, 0.01, 0.86)    # no longer leads R1 by more than the range
-   47|     assert s.select(cands)[0] == "R1"
+   43|     cands = {"R1": summary(0.80, 0.01, 0.86), "E12": summary(0.90, 0.01, 0.80), "E11": summary(0.86, 0.01, 0.86)}
+   44|     selected, trace = v6_select.select(cands)
+   45|     assert selected == "E11" and any("E12 fails" in step for step in trace)
+   46|     cands["E11"] = summary(0.805, 0.01, 0.86)    # no longer leads R1 by more than the range
+   47|     assert v6_select.select(cands)[0] == "R1"
 ```
 
 ## `training/train.py`

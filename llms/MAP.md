@@ -1,6 +1,6 @@
 # partyhat-safety-encoder-eval: file map
 
-Generated from commit `c9f07cbc80be` (2026-11-20) of github.com/partyhat-ai/partyhat-safety-encoder-eval by `scripts/llms_digest.py`, which `.github/workflows/llms-digest.yml` reruns on every push to `main`, so this text matches the code at that commit.
+Generated from commit `71e076f05978` (2026-11-20) of github.com/partyhat-ai/partyhat-safety-encoder-eval by `scripts/llms_digest.py`, which `.github/workflows/llms-digest.yml` reruns on every push to `main`, so this text matches the code at that commit.
 
 245 tracked files. 44 are reproduced in full in the `code-N.md` parts; the rest are listed with the reason they are not.
 
@@ -41,7 +41,7 @@ Every path below is relative to https://raw.githubusercontent.com/partyhat-ai/pa
 | `training/test_v6_committee.py` | 4,881 | 93 | Tests for v6_committee_targets.py (the teacher-committee targets for R3). CPU only:  python3 -m pyte | code-6.md |
 | `training/test_v6_metrics.py` | 3,947 | 97 | Unit tests for v6_metrics.py: dev metrics, the frozen thresholds and the two-model average. CPU, num | code-6.md |
 | `training/test_v6_score.py` | 7,566 | 182 | Tests for v6_score.py: the train.py command for each recipe variant, and margin-storing scorecards. | code-6.md |
-| `training/test_v6_select.py` | 1,997 | 47 | Tests for v6_select.select (the selection rule and the ToxicChat check) on synthetic candidate summa | code-6.md |
+| `training/test_v6_select.py` | 2,270 | 47 | Tests for v6_select.select (the selection rule and the ToxicChat check) on synthetic candidate summa | code-6.md |
 | `training/train.py` | 26,523 | 529 | train.py: fine-tune a DeBERTa-v3 encoder as a 2-class prompt-safety classifier. | code-6.md |
 | `training/train_image.py` | 1,367 | 39 | train_image.py: the Modal image used for training, dev scoring and the tests. | code-6.md |
 | `training/v6_bow_crossfit.py` | 5,564 | 123 | v6_bow_crossfit.py: cross-fitted bag-of-words log-odds for the training files. | code-6.md |
@@ -51,7 +51,7 @@ Every path below is relative to https://raw.githubusercontent.com/partyhat-ai/pa
 | `training/v6_metrics.py` | 6,434 | 133 | v6_metrics.py: dev-set metrics, the three frozen thresholds, and the two-model average. | code-7.md |
 | `training/v6_modal.py` | 26,602 | 586 | v6_modal.py: the Modal launcher for building, training and dev-scoring the release-2.0 encoder. | code-7.md |
 | `training/v6_score.py` | 8,781 | 195 | v6_score.py: the recipe variants, the train.py command for each run, and the dev scorer. | code-7.md |
-| `training/v6_select.py` | 14,287 | 253 | v6_select.py: choose the release candidate from per-item dev scorecards (no text). | code-7.md |
+| `training/v6_select.py` | 17,100 | 302 | v6_select.py: choose the release candidate from per-item dev scorecards (no text). | code-7.md |
 
 ### Data files (not reproduced; one sample per folder in `data-samples.md`)
 
