@@ -1,13 +1,14 @@
 # partyhat-safety-encoder-eval: file map
 
-Generated from commit `6e4922573e47` (2026-11-20) of github.com/partyhat-ai/partyhat-safety-encoder-eval by `scripts/llms_digest.py`, which `.github/workflows/llms-digest.yml` reruns on every push to `main`, so this text matches the code at that commit.
+Generated from commit `c9f07cbc80be` (2026-11-20) of github.com/partyhat-ai/partyhat-safety-encoder-eval by `scripts/llms_digest.py`, which `.github/workflows/llms-digest.yml` reruns on every push to `main`, so this text matches the code at that commit.
 
-244 tracked files. 43 are reproduced in full in the `code-N.md` parts; the rest are listed with the reason they are not.
+245 tracked files. 44 are reproduced in full in the `code-N.md` parts; the rest are listed with the reason they are not.
 
 Every path below is relative to https://raw.githubusercontent.com/partyhat-ai/partyhat-safety-encoder-eval/main/ (append the path to fetch the raw file).
 
 | File | Bytes | Lines | Description | In digest |
 |---|---|---|---|---|
+| `.github/workflows/ci.yml` | 1,633 | 51 | Runs the unit tests in training/ (CPU only, synthetic data, no downloads). | code-1.md |
 | `.github/workflows/llms-digest.yml` | 1,287 | 40 | Keeps llms.txt and llms/ (a plain-text copy of this repository for tools that | code-1.md |
 | `.gitignore` | 51 | 4 |  | code-1.md |
 | `LICENSE` | 1,065 | 21 |  | code-1.md |
@@ -35,13 +36,13 @@ Every path below is relative to https://raw.githubusercontent.com/partyhat-ai/pa
 | `training/r3_committee/r3_committee_modal.py` | 37,608 | 775 | r3_committee_modal.py: the teacher committee that labels rows for recipe variant R3 | code-5.md |
 | `training/r3_committee/test_r3_committee.py` | 4,763 | 91 | Unit tests for the pure functions of r3_committee_modal.py. Synthetic server output only. | code-5.md |
 | `training/tc_common.py` | 8,313 | 215 | tc_common.py: the shared ToxicChat data and metric code. | code-5.md |
-| `training/test_v6_bow.py` | 12,076 | 262 | Tests for the bag-of-words correction (recipe variant R2) in train.py and its cross-fit script. | code-6.md |
+| `training/test_v6_bow.py` | 12,363 | 269 | Tests for the bag-of-words correction (recipe variant R2) in train.py and its cross-fit script. | code-6.md |
 | `training/test_v6_build.py` | 3,040 | 62 | Tests for v6_build.py: de-duplication, decontamination matching, caps and held-back rows. CPU only;  | code-6.md |
 | `training/test_v6_committee.py` | 4,881 | 93 | Tests for v6_committee_targets.py (the teacher-committee targets for R3). CPU only:  python3 -m pyte | code-6.md |
 | `training/test_v6_metrics.py` | 3,947 | 97 | Unit tests for v6_metrics.py: dev metrics, the frozen thresholds and the two-model average. CPU, num | code-6.md |
-| `training/test_v6_score.py` | 6,295 | 153 | Tests for v6_score.py: the train.py command for each recipe variant, and margin-storing scorecards. | code-6.md |
+| `training/test_v6_score.py` | 7,566 | 182 | Tests for v6_score.py: the train.py command for each recipe variant, and margin-storing scorecards. | code-6.md |
 | `training/test_v6_select.py` | 1,997 | 47 | Tests for v6_select.select (the selection rule and the ToxicChat check) on synthetic candidate summa | code-6.md |
-| `training/train.py` | 26,353 | 527 | train.py: fine-tune a DeBERTa-v3 encoder as a 2-class prompt-safety classifier. | code-6.md |
+| `training/train.py` | 26,523 | 529 | train.py: fine-tune a DeBERTa-v3 encoder as a 2-class prompt-safety classifier. | code-6.md |
 | `training/train_image.py` | 1,367 | 39 | train_image.py: the Modal image used for training, dev scoring and the tests. | code-6.md |
 | `training/v6_bow_crossfit.py` | 5,564 | 123 | v6_bow_crossfit.py: cross-fitted bag-of-words log-odds for the training files. | code-6.md |
 | `training/v6_build.py` | 33,721 | 664 | v6_build.py: builds the training pools and the dev sets. Runs on Modal only. | code-6.md |

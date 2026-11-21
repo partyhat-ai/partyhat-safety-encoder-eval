@@ -1,7 +1,63 @@
 # partyhat-safety-encoder-eval: source and docs, part 1 of 7
 
-Generated from commit `6e4922573e47` (2026-11-20) of github.com/partyhat-ai/partyhat-safety-encoder-eval by `scripts/llms_digest.py`, which `.github/workflows/llms-digest.yml` reruns on every push to `main`, so this text matches the code at that commit.
-Files `.github/workflows/llms-digest.yml` to `evidence/README.md`. Lines are numbered as in the repository.
+Generated from commit `c9f07cbc80be` (2026-11-20) of github.com/partyhat-ai/partyhat-safety-encoder-eval by `scripts/llms_digest.py`, which `.github/workflows/llms-digest.yml` reruns on every push to `main`, so this text matches the code at that commit.
+Files `.github/workflows/ci.yml` to `evidence/README.md`. Lines are numbered as in the repository.
+
+## `.github/workflows/ci.yml`
+
+```yaml
+    1| name: tests
+    2| 
+    3| # Runs the unit tests in training/ (CPU only, synthetic data, no downloads).
+    4| # Two jobs so the quick suites don't wait on torch: test_v6_bow.py is the only
+    5| # file that imports torch / transformers (it builds a tiny random DeBERTa).
+    6| on:
+    7|   push:
+    8|     branches: [main]
+    9|   pull_request:
+   10| 
+   11| permissions:
+   12|   contents: read
+   13| 
+   14| concurrency:
+   15|   group: tests-${{ github.ref }}
+   16|   cancel-in-progress: true
+   17| 
+   18| jobs:
+   19|   unit:
+   20|     runs-on: ubuntu-latest
+   21|     steps:
+   22|       - uses: actions/checkout@v4
+   23|       - uses: actions/setup-python@v5
+   24|         with:
+   25|           python-version: "3.12"
+   26|           cache: pip
+   27|           cache-dependency-path: requirements.txt
+   28|       - name: Install
+   29|         # requirements.txt pins numpy, pandas and scikit-learn; modal is only
+   30|         # imported (never called) by r3_committee/test_r3_committee.py.
+   31|         run: pip install -r requirements.txt pytest modal
+   32|       - name: Test
+   33|         run: python -m pytest -q training --ignore=training/test_v6_bow.py
+   34| 
+   35|   train:
+   36|     runs-on: ubuntu-latest
+   37|     steps:
+   38|       - uses: actions/checkout@v4
+   39|       - uses: actions/setup-python@v5
+   40|         with:
+   41|           python-version: "3.12"
+   42|           cache: pip
+   43|           cache-dependency-path: requirements*.txt
+   44|       - name: Install
+   45|         # CPU-only torch wheel first (no CUDA download), then the pinned
+   46|         # scoring requirements, which it already satisfies.
+   47|         run: |
+   48|           pip install torch==2.12.1 --index-url https://download.pytorch.org/whl/cpu
+   49|           pip install -r requirements-scoring.txt scikit-learn==1.9.0 "accelerate>=1.1.0" pytest
+   50|       - name: Test
+   51|         run: python -m pytest -q training/test_v6_bow.py
+```
 
 ## `.github/workflows/llms-digest.yml`
 

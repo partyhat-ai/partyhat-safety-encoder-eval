@@ -1,6 +1,6 @@
 # partyhat-safety-encoder-eval: source and docs, part 6 of 7
 
-Generated from commit `6e4922573e47` (2026-11-20) of github.com/partyhat-ai/partyhat-safety-encoder-eval by `scripts/llms_digest.py`, which `.github/workflows/llms-digest.yml` reruns on every push to `main`, so this text matches the code at that commit.
+Generated from commit `c9f07cbc80be` (2026-11-20) of github.com/partyhat-ai/partyhat-safety-encoder-eval by `scripts/llms_digest.py`, which `.github/workflows/llms-digest.yml` reruns on every push to `main`, so this text matches the code at that commit.
 Files `training/test_v6_bow.py` to `training/v6_build.py`. Lines are numbered as in the repository.
 
 ## `training/test_v6_bow.py`
@@ -268,6 +268,13 @@ Files `training/test_v6_bow.py` to `training/v6_build.py`. Lines are numbered as
   260|                                       "--soft_label_field", "toxicity_soft"])
   261|     with pytest.raises(SystemExit):
   262|         train.main()
+  263| 
+  264| 
+  265| def test_private_flag_defaults_on_and_can_be_turned_off(monkeypatch):
+  266|     import train
+  267|     for argv, want in (([], True), (["--private"], True), (["--no-private"], False)):
+  268|         monkeypatch.setattr(sys, "argv", ["train.py", *argv])
+  269|         assert train.parse_args().private is want
 ```
 
 ## `training/test_v6_build.py`
@@ -560,139 +567,168 @@ Files `training/test_v6_bow.py` to `training/v6_build.py`. Lines are numbered as
    18|     assert all("/v6/pools/" in e for e in c if e.endswith(".jsonl"))
    19|     strip = lambda cmd: [x for x in cmd if not x.endswith(".jsonl")]  # noqa: E731
    20|     assert strip(c) == strip(r1)          # identical recipe, flags and S
-   21|     # R4 row count = 3 ToxicChat copies + Aegis 2.0 + WildGuardMix + WildJailbreak (release file counts)
-   22|     assert 3 * 4573 + 21132 + 43080 + 58200 == 136131
-   23| 
-   24| 
-   25| def _val(cmd, flag):
-   26|     return cmd[cmd.index(flag) + 1]
-   27| 
-   28| 
-   29| def test_r1_command_matches_the_recipe():
-   30|     c = _cmd("R1")
-   31|     assert _val(c, "--lr") == "2e-05" and _val(c, "--batch_size") == "32"
-   32|     assert _val(c, "--grad_accum") == "1" and _val(c, "--max_len") == "512"
-   33|     assert _val(c, "--rdrop_alpha") == "0" and _val(c, "--class_weights") == "1.0,1.0"
-   34|     assert _val(c, "--loss") == "weighted_ce" and _val(c, "--soft_label_field") == "toxicity_soft"
-   35|     assert _val(c, "--max_steps") == "1234" and _val(c, "--eval_steps") == "1234"
-   36|     assert _val(c, "--seed") == "13" and _val(c, "--head_seed") == "13"
-   37|     assert _val(c, "--split_seed") == "13" and _val(c, "--val_fraction") == "0.10"
-   38|     assert "--allow_tf32" in c and "--group_by_length" in c
-   39|     assert "--warm_start_model" not in c and "--push_to_hub" not in c
-   40|     assert "--bow_logit_field" not in c
-   41|     i = c.index("--extra_train_jsonl")
-   42|     extra = c[i + 1:i + 7]
-   43|     assert [e.rsplit("/", 1)[1] for e in extra] == ["p1_copy.jsonl", "p1_copy.jsonl", "p2.jsonl",
-   44|                                                      "p3.jsonl", "p4.jsonl", "p5.jsonl"]
-   45| 
+   21| 
+   22| 
+   23| # Rows in each training file of the release build (the pool files on the data volume).
+   24| POOL_ROWS = {
+   25|     "p1_copy": 4573,      # ToxicChat train split (toxicchat0124 train minus the 10% validation carve)
+   26|     "p2": 21132,          # Aegis 2.0
+   27|     "p3": 43080,          # WildGuardMix
+   28|     "p4": 58200,          # WildJailbreak, all four types
+   29|     "p4_r0": 29100,       # WildJailbreak, vanilla_harmful + adversarial_harmful only
+   30|     "p5": 14185,          # FalseReject
+   31|     "r3_extra": 100000,   # R3's extra teacher-labelled prompts
+   32| }
+   33| # train.py's own ToxicChat loader adds the split once more, on top of the files the recipe lists.
+   34| LOADER_ROWS = POOL_ROWS["p1_copy"]
+   35| # Training rows per recipe variant, as published in evidence/reports/dev_ablation.md.
+   36| DOCUMENTED_ROWS = {"R0": 107031, "R1": 150316, "R2": 150316, "R3": 250316, "R4": 136131}
+   37| 
+   38| 
+   39| def _recipe_rows(variant):
+   40|     files = [e.rsplit("/", 1)[1].removesuffix(".jsonl") for e in _cmd(variant) if e.endswith(".jsonl")]
+   41|     return LOADER_ROWS + sum(POOL_ROWS[f] for f in files)
+   42| 
+   43| 
+   44| def test_every_variant_has_a_documented_row_count():
+   45|     assert set(DOCUMENTED_ROWS) == set(vs.RECIPE_VARIANTS)
    46| 
-   47| def test_r0_drops_p5_and_benign_p4():
-   48|     c = _cmd("R0")
-   49|     i = c.index("--extra_train_jsonl")
-   50|     assert [e.rsplit("/", 1)[1] for e in c[i + 1:i + 6]] == [
-   51|         "p1_copy.jsonl", "p1_copy.jsonl", "p2.jsonl", "p3.jsonl", "p4_r0.jsonl"]
-   52|     assert "p5.jsonl" not in " ".join(c)
+   47| 
+   48| @pytest.mark.parametrize("variant", sorted(DOCUMENTED_ROWS))
+   49| def test_recipe_row_count_matches_the_report(variant):
+   50|     # e.g. R4 = 3 ToxicChat copies (loader + p1_copy twice) + Aegis 2.0 + WildGuardMix + WildJailbreak
+   51|     assert _recipe_rows(variant) == DOCUMENTED_ROWS[variant]
+   52| 
    53| 
-   54| 
-   55| def test_r2_reads_bow_files_and_sets_flag():
-   56|     c = _cmd("R2")
-   57|     assert _val(c, "--bow_logit_field") == "bow_logit"
-   58|     assert all("/r2/" in e for e in c if e.endswith(".jsonl"))
-   59| 
-   60| 
-   61| def test_oom_fallback_batch():
-   62|     c = _cmd("R1", batch_size=16, grad_accum=2)
-   63|     assert _val(c, "--batch_size") == "16" and _val(c, "--grad_accum") == "2"
-   64| 
-   65| 
-   66| def test_scorecard_has_margin_and_no_text():
-   67|     rows = [{"row_id": "x:1", "user_input": "secret text", "toxicity": 1},
-   68|             {"row_id": "x:2", "user_input": "other", "toxicity": 0}]
-   69|     m = np.array([3.0, -40.0])
-   70|     from v6_metrics import probs_from_margin
-   71|     card = vs.scorecard("R1_s13", "set", rows, probs_from_margin(m), m)
-   72|     assert set(card["rows"][0]) == {"i", "src", "label", "score", "margin", "decision"}
-   73|     assert "secret" not in str(card) and card["rows"][1]["margin"] == -40.0
-   74|     assert card["rows"][1]["score"] > 0
+   54| def _val(cmd, flag):
+   55|     return cmd[cmd.index(flag) + 1]
+   56| 
+   57| 
+   58| def test_r1_command_matches_the_recipe():
+   59|     c = _cmd("R1")
+   60|     assert _val(c, "--lr") == "2e-05" and _val(c, "--batch_size") == "32"
+   61|     assert _val(c, "--grad_accum") == "1" and _val(c, "--max_len") == "512"
+   62|     assert _val(c, "--rdrop_alpha") == "0" and _val(c, "--class_weights") == "1.0,1.0"
+   63|     assert _val(c, "--loss") == "weighted_ce" and _val(c, "--soft_label_field") == "toxicity_soft"
+   64|     assert _val(c, "--max_steps") == "1234" and _val(c, "--eval_steps") == "1234"
+   65|     assert _val(c, "--seed") == "13" and _val(c, "--head_seed") == "13"
+   66|     assert _val(c, "--split_seed") == "13" and _val(c, "--val_fraction") == "0.10"
+   67|     assert "--allow_tf32" in c and "--group_by_length" in c
+   68|     assert "--warm_start_model" not in c and "--push_to_hub" not in c
+   69|     assert "--bow_logit_field" not in c
+   70|     i = c.index("--extra_train_jsonl")
+   71|     extra = c[i + 1:i + 7]
+   72|     assert [e.rsplit("/", 1)[1] for e in extra] == ["p1_copy.jsonl", "p1_copy.jsonl", "p2.jsonl",
+   73|                                                      "p3.jsonl", "p4.jsonl", "p5.jsonl"]
+   74| 
    75| 
-   76| 
-   77| # ---- the test lock ------------------------------------------------------------------------ #
-   78| def _seal(tmp_path, text="selection v1"):
-   79|     md = tmp_path / vs.SELECTION
-   80|     md.write_text(text)
-   81|     vs.seal_selection(tmp_path)
-   82|     return md
+   76| def test_r0_drops_p5_and_benign_p4():
+   77|     c = _cmd("R0")
+   78|     i = c.index("--extra_train_jsonl")
+   79|     assert [e.rsplit("/", 1)[1] for e in c[i + 1:i + 6]] == [
+   80|         "p1_copy.jsonl", "p1_copy.jsonl", "p2.jsonl", "p3.jsonl", "p4_r0.jsonl"]
+   81|     assert "p5.jsonl" not in " ".join(c)
+   82| 
    83| 
-   84| 
-   85| def _never(*a, **k):
-   86|     raise AssertionError("data or model touched while the test sets are locked")
-   87| 
+   84| def test_r2_reads_bow_files_and_sets_flag():
+   85|     c = _cmd("R2")
+   86|     assert _val(c, "--bow_logit_field") == "bow_logit"
+   87|     assert all("/r2/" in e for e in c if e.endswith(".jsonl"))
    88| 
-   89| @pytest.mark.parametrize("name", vs.TEST_SETS)
-   90| def test_every_test_set_is_locked_without_a_selection_seal(tmp_path, name):
-   91|     with pytest.raises(vs.TestSetLocked):
-   92|         vs.assert_test_unlocked(name, tmp_path)
-   93|     with pytest.raises(vs.TestSetLocked):
-   94|         vs.score_test_sets("R1_s13", [name], tmp_path, _never, _never)
-   95| 
-   96| 
-   97| def test_an_unsealed_record_keeps_the_lock(tmp_path):
-   98|     (tmp_path / vs.SELECTION).write_text("selection v1")
-   99|     with pytest.raises(vs.TestSetLocked):
-  100|         vs.assert_test_unlocked("xstest", tmp_path)
-  101| 
-  102| 
-  103| def test_lock_checks_all_sets_before_loading_any(tmp_path):
-  104|     with pytest.raises(vs.TestSetLocked):
-  105|         vs.score_test_sets("R1_s13", ["tc_val", "orbench"], tmp_path, _never, _never)
-  106| 
-  107| 
-  108| def test_unknown_set_names_are_refused_even_when_sealed(tmp_path):
-  109|     _seal(tmp_path)
-  110|     with pytest.raises(vs.TestSetLocked):
-  111|         vs.assert_test_unlocked("orbench_renamed", tmp_path)
+   89| 
+   90| def test_oom_fallback_batch():
+   91|     c = _cmd("R1", batch_size=16, grad_accum=2)
+   92|     assert _val(c, "--batch_size") == "16" and _val(c, "--grad_accum") == "2"
+   93| 
+   94| 
+   95| def test_scorecard_has_margin_and_no_text():
+   96|     rows = [{"row_id": "x:1", "user_input": "secret text", "toxicity": 1},
+   97|             {"row_id": "x:2", "user_input": "other", "toxicity": 0}]
+   98|     m = np.array([3.0, -40.0])
+   99|     from v6_metrics import probs_from_margin
+  100|     card = vs.scorecard("R1_s13", "set", rows, probs_from_margin(m), m)
+  101|     assert set(card["rows"][0]) == {"i", "src", "label", "score", "margin", "decision"}
+  102|     assert "secret" not in str(card) and card["rows"][1]["margin"] == -40.0
+  103|     assert card["rows"][1]["score"] > 0
+  104| 
+  105| 
+  106| # ---- the test lock ------------------------------------------------------------------------ #
+  107| def _seal(tmp_path, text="selection v1"):
+  108|     md = tmp_path / vs.SELECTION
+  109|     md.write_text(text)
+  110|     vs.seal_selection(tmp_path)
+  111|     return md
   112| 
   113| 
-  114| def test_drifted_or_partial_seal_keeps_the_lock(tmp_path):
-  115|     md = _seal(tmp_path)
-  116|     vs.assert_test_unlocked("xstest", tmp_path)
-  117|     md.write_text("selection v1, edited after sealing")
-  118|     with pytest.raises(vs.TestSetLocked):
-  119|         vs.assert_test_unlocked("xstest", tmp_path)
-  120|     (tmp_path / vs.SELECTION_SEAL).unlink()
-  121|     with pytest.raises(vs.TestSetLocked):
-  122|         vs.assert_test_unlocked("xstest", tmp_path)
-  123| 
+  114| def _never(*a, **k):
+  115|     raise AssertionError("data or model touched while the test sets are locked")
+  116| 
+  117| 
+  118| @pytest.mark.parametrize("name", vs.TEST_SETS)
+  119| def test_every_test_set_is_locked_without_a_selection_seal(tmp_path, name):
+  120|     with pytest.raises(vs.TestSetLocked):
+  121|         vs.assert_test_unlocked(name, tmp_path)
+  122|     with pytest.raises(vs.TestSetLocked):
+  123|         vs.score_test_sets("R1_s13", [name], tmp_path, _never, _never)
   124| 
-  125| def test_a_seal_cannot_be_replaced_for_different_content(tmp_path):
-  126|     md = _seal(tmp_path)
-  127|     assert vs.seal_selection(tmp_path)["sha256"] == vs.record_digest(md)[0]   # resealing the same is a no-op
-  128|     md.write_text("selection v2")
-  129|     with pytest.raises(vs.TestSetLocked):
-  130|         vs.seal_selection(tmp_path)
+  125| 
+  126| def test_an_unsealed_record_keeps_the_lock(tmp_path):
+  127|     (tmp_path / vs.SELECTION).write_text("selection v1")
+  128|     with pytest.raises(vs.TestSetLocked):
+  129|         vs.assert_test_unlocked("xstest", tmp_path)
+  130| 
   131| 
-  132| 
-  133| def test_dev_sets_are_never_locked(tmp_path):
-  134|     for n in vs.DEV_SETS:
-  135|         vs.assert_test_unlocked(n, tmp_path)
+  132| def test_lock_checks_all_sets_before_loading_any(tmp_path):
+  133|     with pytest.raises(vs.TestSetLocked):
+  134|         vs.score_test_sets("R1_s13", ["tc_val", "orbench"], tmp_path, _never, _never)
+  135| 
   136| 
-  137| 
-  138| def test_sealed_selection_unlocks_and_scores(tmp_path):
-  139|     _seal(tmp_path)
-  140|     rows = [{"row_id": "jbb:0", "toxicity": 1}, {"row_id": "jbb:1", "toxicity": 0}]
-  141|     m = np.array([2.0, -2.0])
-  142|     from v6_metrics import probs_from_margin
-  143|     out = vs.score_test_sets("R1_s13", ["jbb"], tmp_path, lambda n: rows,
-  144|                              lambda r: (probs_from_margin(m), m), threshold=0.5)
-  145|     assert [r["decision"] for r in out["jbb"]["rows"]] == [1, 0]
-  146|     assert out["jbb"]["rows"][0]["margin"] == 2.0
-  147| 
-  148| 
-  149| def test_twins_pair_id_parsing():
-  150|     card = {"rows": [{"src": "calm:abc:def:1", "score": 0.9, "margin": 2.0, "label": 1},
-  151|                      {"src": "calm:abc:def:0", "score": 0.1, "margin": -2.0, "label": 0}]}
-  152|     s = vs.dev_sets_for_report({"twins_prompt": card})
-  153|     assert s["twins_prompt"]["pair_id"] == ["abc:def", "abc:def"]
+  137| def test_unknown_set_names_are_refused_even_when_sealed(tmp_path):
+  138|     _seal(tmp_path)
+  139|     with pytest.raises(vs.TestSetLocked):
+  140|         vs.assert_test_unlocked("orbench_renamed", tmp_path)
+  141| 
+  142| 
+  143| def test_drifted_or_partial_seal_keeps_the_lock(tmp_path):
+  144|     md = _seal(tmp_path)
+  145|     vs.assert_test_unlocked("xstest", tmp_path)
+  146|     md.write_text("selection v1, edited after sealing")
+  147|     with pytest.raises(vs.TestSetLocked):
+  148|         vs.assert_test_unlocked("xstest", tmp_path)
+  149|     (tmp_path / vs.SELECTION_SEAL).unlink()
+  150|     with pytest.raises(vs.TestSetLocked):
+  151|         vs.assert_test_unlocked("xstest", tmp_path)
+  152| 
+  153| 
+  154| def test_a_seal_cannot_be_replaced_for_different_content(tmp_path):
+  155|     md = _seal(tmp_path)
+  156|     assert vs.seal_selection(tmp_path)["sha256"] == vs.record_digest(md)[0]   # resealing the same is a no-op
+  157|     md.write_text("selection v2")
+  158|     with pytest.raises(vs.TestSetLocked):
+  159|         vs.seal_selection(tmp_path)
+  160| 
+  161| 
+  162| def test_dev_sets_are_never_locked(tmp_path):
+  163|     for n in vs.DEV_SETS:
+  164|         vs.assert_test_unlocked(n, tmp_path)
+  165| 
+  166| 
+  167| def test_sealed_selection_unlocks_and_scores(tmp_path):
+  168|     _seal(tmp_path)
+  169|     rows = [{"row_id": "jbb:0", "toxicity": 1}, {"row_id": "jbb:1", "toxicity": 0}]
+  170|     m = np.array([2.0, -2.0])
+  171|     from v6_metrics import probs_from_margin
+  172|     out = vs.score_test_sets("R1_s13", ["jbb"], tmp_path, lambda n: rows,
+  173|                              lambda r: (probs_from_margin(m), m), threshold=0.5)
+  174|     assert [r["decision"] for r in out["jbb"]["rows"]] == [1, 0]
+  175|     assert out["jbb"]["rows"][0]["margin"] == 2.0
+  176| 
+  177| 
+  178| def test_twins_pair_id_parsing():
+  179|     card = {"rows": [{"src": "calm:abc:def:1", "score": 0.9, "margin": 2.0, "label": 1},
+  180|                      {"src": "calm:abc:def:0", "score": 0.1, "margin": -2.0, "label": 0}]}
+  181|     s = vs.dev_sets_for_report({"twins_prompt": card})
+  182|     assert s["twins_prompt"]["pair_id"] == ["abc:def", "abc:def"]
 ```
 
 ## `training/test_v6_select.py`
@@ -995,288 +1031,290 @@ Files `training/test_v6_bow.py` to `training/v6_build.py`. Lines are numbered as
   243|                    help="cap rows for a quick smoke test")
   244|     p.add_argument("--push_to_hub", action="store_true")
   245|     p.add_argument("--hub_model_id", default=None)
-  246|     p.add_argument("--private", action="store_true", default=True)
-  247|     return p.parse_args()
-  248| 
-  249| 
-  250| def main():
-  251|     args = parse_args()
-  252|     set_seed(args.seed)
-  253|     os.makedirs(args.output_dir, exist_ok=True)
-  254|     if args.allow_tf32:
-  255|         torch.backends.cuda.matmul.allow_tf32 = True
-  256|         torch.backends.cudnn.allow_tf32 = True
-  257|         print("[precision] TF32 matmuls ENABLED (still no fp16/bf16)")
-  258|     init_from = args.warm_start_model or args.model
-  259|     # The validation split and the head initialisation have their own seeds, so
-  260|     # runs can share them while --seed still varies shuffling and dropout.
-  261|     split_seed = args.seed if args.split_seed is None else args.split_seed
-  262|     head_seed = args.seed if args.head_seed is None else args.head_seed
-  263| 
-  264|     # ---- data ------------------------------------------------------------- #
-  265|     train_df, val_df = load_train_val(
-  266|         val_fraction=args.val_fraction, seed=split_seed, max_samples=args.max_samples
-  267|     )
-  268|     val_split_sha256 = split_hash(val_df)
-  269|     print(f"[data] val split sha256={val_split_sha256} (split_seed={split_seed})")
-  270|     pos = int(train_df[LABEL_FIELD].sum())
-  271|     print(f"[data] train={len(train_df)} (pos={pos}, {pos/len(train_df):.2%})  "
-  272|           f"val={len(val_df)} (pos={int(val_df[LABEL_FIELD].sum())})")
-  273| 
-  274|     # ---- optional: append EXTRA pre-decontaminated training rows ----------- #
-  275|     # Extra training rows from other datasets. Appended to TRAIN only; the
-  276|     # validation split stays pure ToxicChat, so
-  277|     # the frozen threshold and val-AUPRC selection remain on in-distribution data.
-  278|     if args.extra_train_jsonl:
-  279|         import pandas as pd
-  280| 
-  281|         soft_f = args.soft_label_field
-  282|         bow_f = args.bow_logit_field
-  283|         if soft_f:
-  284|             train_df = train_df.copy()
-  285|             train_df["soft_labels"] = train_df[LABEL_FIELD].astype(float)
-  286|         if bow_f:
-  287|             train_df = train_df.copy()
-  288|             train_df["bow_logit"] = 0.0  # loader rows carry no bag-of-words score
-  289|         before, epos = len(train_df), int(train_df[LABEL_FIELD].sum())
-  290|         parts = [train_df[[INPUT_FIELD, LABEL_FIELD] + (["soft_labels"] if soft_f else [])
-  291|                           + (["bow_logit"] if bow_f else [])]]
-  292|         for path in args.extra_train_jsonl:
-  293|             extra = pd.read_json(path, lines=True)
-  294|             miss = {INPUT_FIELD, LABEL_FIELD} - set(extra.columns)
-  295|             if miss:
-  296|                 raise SystemExit(f"--extra_train_jsonl {path} missing columns {miss}")
-  297|             extra = extra.dropna(subset=[INPUT_FIELD])
-  298|             extra[LABEL_FIELD] = extra[LABEL_FIELD].astype(int)
-  299|             cols = [INPUT_FIELD, LABEL_FIELD]
-  300|             if soft_f:
-  301|                 if soft_f in extra.columns:
-  302|                     if extra[soft_f].isna().any():
-  303|                         raise SystemExit(f"--soft_label_field: {path} has rows with no {soft_f} "
-  304|                                          "(a missing soft target becomes a NaN loss)")
-  305|                     extra["soft_labels"] = extra[soft_f].astype(float)
-  306|                     n_soft = int(((extra["soft_labels"] > 0) & (extra["soft_labels"] < 1)).sum())
-  307|                 else:
-  308|                     extra["soft_labels"] = extra[LABEL_FIELD].astype(float)
-  309|                     n_soft = 0
-  310|                 cols.append("soft_labels")
-  311|                 print(f"[extra] {path}: {n_soft} rows with a fractional soft target")
-  312|             if bow_f:
-  313|                 if bow_f in extra.columns:
-  314|                     if extra[bow_f].isna().any():
-  315|                         raise SystemExit(f"--bow_logit_field: {path} has rows with no {bow_f}")
-  316|                     extra["bow_logit"] = extra[bow_f].astype(float)
-  317|                 else:
-  318|                     extra["bow_logit"] = 0.0
-  319|                 cols.append("bow_logit")
-  320|                 print(f"[extra] {path}: bag-of-words log-odds on "
-  321|                       f"{int((extra['bow_logit'] != 0).sum())} rows")
-  322|             parts.append(extra[cols])
-  323|             print(f"[extra] +{len(extra)} rows (pos={int(extra[LABEL_FIELD].sum())}/{len(extra)}) "
-  324|                   f"from {path}")
-  325|         train_df = pd.concat(parts, ignore_index=True)
-  326|         print(f"[extra] train {before}->{len(train_df)} "
-  327|               f"(pos {epos}->{int(train_df[LABEL_FIELD].sum())})")
-  328|     elif args.soft_label_field or args.bow_logit_field:
-  329|         raise SystemExit("--soft_label_field / --bow_logit_field need --extra_train_jsonl")
-  330|     use_soft = bool(args.soft_label_field)
-  331|     use_bow = bool(args.bow_logit_field)
-  332| 
-  333|     tok = AutoTokenizer.from_pretrained(init_from)
+  246|     p.add_argument("--private", action=argparse.BooleanOptionalAction, default=True,
+  247|                    help="with --push_to_hub, create the Hub repo as private (the default); "
+  248|                         "--no-private creates it public.")
+  249|     return p.parse_args()
+  250| 
+  251| 
+  252| def main():
+  253|     args = parse_args()
+  254|     set_seed(args.seed)
+  255|     os.makedirs(args.output_dir, exist_ok=True)
+  256|     if args.allow_tf32:
+  257|         torch.backends.cuda.matmul.allow_tf32 = True
+  258|         torch.backends.cudnn.allow_tf32 = True
+  259|         print("[precision] TF32 matmuls ENABLED (still no fp16/bf16)")
+  260|     init_from = args.warm_start_model or args.model
+  261|     # The validation split and the head initialisation have their own seeds, so
+  262|     # runs can share them while --seed still varies shuffling and dropout.
+  263|     split_seed = args.seed if args.split_seed is None else args.split_seed
+  264|     head_seed = args.seed if args.head_seed is None else args.head_seed
+  265| 
+  266|     # ---- data ------------------------------------------------------------- #
+  267|     train_df, val_df = load_train_val(
+  268|         val_fraction=args.val_fraction, seed=split_seed, max_samples=args.max_samples
+  269|     )
+  270|     val_split_sha256 = split_hash(val_df)
+  271|     print(f"[data] val split sha256={val_split_sha256} (split_seed={split_seed})")
+  272|     pos = int(train_df[LABEL_FIELD].sum())
+  273|     print(f"[data] train={len(train_df)} (pos={pos}, {pos/len(train_df):.2%})  "
+  274|           f"val={len(val_df)} (pos={int(val_df[LABEL_FIELD].sum())})")
+  275| 
+  276|     # ---- optional: append EXTRA pre-decontaminated training rows ----------- #
+  277|     # Extra training rows from other datasets. Appended to TRAIN only; the
+  278|     # validation split stays pure ToxicChat, so
+  279|     # the frozen threshold and val-AUPRC selection remain on in-distribution data.
+  280|     if args.extra_train_jsonl:
+  281|         import pandas as pd
+  282| 
+  283|         soft_f = args.soft_label_field
+  284|         bow_f = args.bow_logit_field
+  285|         if soft_f:
+  286|             train_df = train_df.copy()
+  287|             train_df["soft_labels"] = train_df[LABEL_FIELD].astype(float)
+  288|         if bow_f:
+  289|             train_df = train_df.copy()
+  290|             train_df["bow_logit"] = 0.0  # loader rows carry no bag-of-words score
+  291|         before, epos = len(train_df), int(train_df[LABEL_FIELD].sum())
+  292|         parts = [train_df[[INPUT_FIELD, LABEL_FIELD] + (["soft_labels"] if soft_f else [])
+  293|                           + (["bow_logit"] if bow_f else [])]]
+  294|         for path in args.extra_train_jsonl:
+  295|             extra = pd.read_json(path, lines=True)
+  296|             miss = {INPUT_FIELD, LABEL_FIELD} - set(extra.columns)
+  297|             if miss:
+  298|                 raise SystemExit(f"--extra_train_jsonl {path} missing columns {miss}")
+  299|             extra = extra.dropna(subset=[INPUT_FIELD])
+  300|             extra[LABEL_FIELD] = extra[LABEL_FIELD].astype(int)
+  301|             cols = [INPUT_FIELD, LABEL_FIELD]
+  302|             if soft_f:
+  303|                 if soft_f in extra.columns:
+  304|                     if extra[soft_f].isna().any():
+  305|                         raise SystemExit(f"--soft_label_field: {path} has rows with no {soft_f} "
+  306|                                          "(a missing soft target becomes a NaN loss)")
+  307|                     extra["soft_labels"] = extra[soft_f].astype(float)
+  308|                     n_soft = int(((extra["soft_labels"] > 0) & (extra["soft_labels"] < 1)).sum())
+  309|                 else:
+  310|                     extra["soft_labels"] = extra[LABEL_FIELD].astype(float)
+  311|                     n_soft = 0
+  312|                 cols.append("soft_labels")
+  313|                 print(f"[extra] {path}: {n_soft} rows with a fractional soft target")
+  314|             if bow_f:
+  315|                 if bow_f in extra.columns:
+  316|                     if extra[bow_f].isna().any():
+  317|                         raise SystemExit(f"--bow_logit_field: {path} has rows with no {bow_f}")
+  318|                     extra["bow_logit"] = extra[bow_f].astype(float)
+  319|                 else:
+  320|                     extra["bow_logit"] = 0.0
+  321|                 cols.append("bow_logit")
+  322|                 print(f"[extra] {path}: bag-of-words log-odds on "
+  323|                       f"{int((extra['bow_logit'] != 0).sum())} rows")
+  324|             parts.append(extra[cols])
+  325|             print(f"[extra] +{len(extra)} rows (pos={int(extra[LABEL_FIELD].sum())}/{len(extra)}) "
+  326|                   f"from {path}")
+  327|         train_df = pd.concat(parts, ignore_index=True)
+  328|         print(f"[extra] train {before}->{len(train_df)} "
+  329|               f"(pos {epos}->{int(train_df[LABEL_FIELD].sum())})")
+  330|     elif args.soft_label_field or args.bow_logit_field:
+  331|         raise SystemExit("--soft_label_field / --bow_logit_field need --extra_train_jsonl")
+  332|     use_soft = bool(args.soft_label_field)
+  333|     use_bow = bool(args.bow_logit_field)
   334| 
-  335|     def to_hf(df, soft=False, bow=False):
-  336|         cols = ([INPUT_FIELD, LABEL_FIELD] + (["soft_labels"] if soft else [])
-  337|                 + (["bow_logit"] if bow else []))
-  338|         d = df[cols].rename(columns={LABEL_FIELD: "labels"})
-  339|         return Dataset.from_pandas(d, preserve_index=False)
-  340| 
-  341|     def tokenize(batch):
-  342|         return tok(batch[INPUT_FIELD], truncation=True, max_length=args.max_len)
-  343| 
-  344|     train_ds = to_hf(train_df, soft=use_soft, bow=use_bow).map(
-  345|         tokenize, batched=True, remove_columns=[INPUT_FIELD])
-  346|     val_ds = to_hf(val_df).map(tokenize, batched=True, remove_columns=[INPUT_FIELD])
-  347| 
-  348|     # ---- model ------------------------------------------------------------ #
-  349|     model = AutoModelForSequenceClassification.from_pretrained(
-  350|         init_from, num_labels=2, id2label=ID2LABEL, label2id=LABEL2ID,
-  351|         ignore_mismatched_sizes=bool(args.warm_start_model),
-  352|         torch_dtype=torch.float32,  # force IEEE FP32 at LOAD. Newer transformers
-  353|         # defaults to the checkpoint's stored dtype (often fp16), the DeBERTa-v3
-  354|         # pitfall. fp16=False in TrainingArguments governs autocast, NOT load dtype.
-  355|     )
-  356|     if args.warm_start_model:
-  357|         # ignore_mismatched_sizes only re-inits the head on a SHAPE mismatch. A
-  358|         # toxicity checkpoint often already has a 2-class head, so it would
-  359|         # otherwise transfer verbatim and carry the checkpoint's (possibly
-  360|         # inverted) class polarity. Re-init the classifier deterministically so
-  361|         # warm-start means "encoder body only".
-  362|         # Only the classifier is reinitialised, under head_seed. The ContextPooler is
-  363|         # kept from the checkpoint: on a warm-start checkpoint that has a head
-  364|         # (e.g. cooperleong00) it loads verbatim, so it is the same for every seed.
-  365|         set_seed(head_seed)
-  366|         model.classifier.apply(model._init_weights)
-  367|         print(f"[warm-start] encoder body <- {args.warm_start_model} "
-  368|               f"(2-class head reinitialized @ head_seed={head_seed}; "
-  369|               f"encoder is the transferred signal)")
-  370| 
-  371|     # ---- class weights ---------------------------------------------------- #
-  372|     class_weights = None
-  373|     if args.class_weights:
-  374|         cw = np.array([float(x) for x in args.class_weights.split(",")], dtype=np.float64)
-  375|         if cw.shape != (2,):
-  376|             raise SystemExit("--class_weights must be 'w0,w1'")
-  377|         class_weights = torch.tensor(cw, dtype=torch.float)
-  378|         print(f"[loss] {args.loss}  class_weights={cw.tolist()} (FROZEN via --class_weights)")
-  379|     elif args.loss in ("weighted_ce", "focal"):
-  380|         cw = compute_class_weight(
-  381|             "balanced", classes=np.array([0, 1]), y=train_df[LABEL_FIELD].values
-  382|         )
-  383|         class_weights = torch.tensor(cw, dtype=torch.float)
-  384|         print(f"[loss] {args.loss}  class_weights={cw.round(3).tolist()}")
-  385| 
-  386|     # ---- training args (FP32 only, see the module docstring) -------------- #
-  387|     if (args.max_steps is None) != (args.eval_steps is None):
-  388|         raise SystemExit("--max_steps and --eval_steps go together")
-  389|     step_kw = (
-  390|         dict(max_steps=args.max_steps, eval_strategy="steps", eval_steps=args.eval_steps,
-  391|              save_strategy="steps", save_steps=args.eval_steps)
-  392|         if args.max_steps else dict(eval_strategy="epoch", save_strategy="epoch")
-  393|     )
-  394|     targs = TrainingArguments(
-  395|         output_dir=args.output_dir,
-  396|         num_train_epochs=args.epochs,
-  397|         **step_kw,
-  398|         remove_unused_columns=not (use_soft or use_bow),  # keep soft_labels / bow_logit
-  399|         # transformers 5.x: the old group_by_length=True is train_sampling_strategy="group_by_length"
-  400|         train_sampling_strategy="group_by_length" if args.group_by_length else "random",
-  401|         per_device_train_batch_size=args.batch_size,
-  402|         gradient_accumulation_steps=args.grad_accum,
-  403|         per_device_eval_batch_size=args.eval_batch_size,
-  404|         learning_rate=args.lr,
-  405|         warmup_ratio=args.warmup_ratio,
-  406|         weight_decay=args.weight_decay,
-  407|         max_grad_norm=args.grad_clip,
-  408|         load_best_model_at_end=True,
-  409|         metric_for_best_model=args.metric_for_best,
-  410|         greater_is_better=True,
-  411|         save_total_limit=2,  # keep best + last; guards load_best_model_at_end
-  412|         fp16=False,   # DO NOT enable. DeBERTa-v3 silently degrades in fp16/bf16.
-  413|         bf16=False,   # DO NOT enable.
-  414|         logging_steps=50,
-  415|         report_to="none",
-  416|         seed=args.seed,
-  417|     )
-  418|     assert not targs.fp16 and not targs.bf16, "DeBERTa-v3 must train in FP32"
-  419| 
-  420|     trainer = WeightedLossTrainer(
-  421|         model=model,
-  422|         args=targs,
-  423|         train_dataset=train_ds,
-  424|         eval_dataset=val_ds,
-  425|         processing_class=tok,
-  426|         data_collator=DataCollatorWithPadding(tokenizer=tok),
-  427|         compute_metrics=make_compute_metrics(),
-  428|         class_weights=class_weights,
-  429|         loss_type=args.loss,
-  430|         focal_gamma=args.focal_gamma,
-  431|         rdrop_alpha=args.rdrop_alpha,
-  432|     )
-  433|     if args.rdrop_alpha > 0:
-  434|         print(f"[rdrop] symmetric-KL consistency ON (alpha={args.rdrop_alpha})")
-  435| 
-  436|     trainer.train()
-  437|     st = trainer.state
-  438|     best_step = None
-  439|     if st.best_model_checkpoint:
-  440|         best_step = int(str(st.best_model_checkpoint).rstrip("/").rsplit("-", 1)[-1])
-  441|     run_meta = {
-  442|         "global_step": int(st.global_step),
-  443|         "max_steps": int(st.max_steps),
-  444|         "num_train_epochs": float(st.num_train_epochs),
-  445|         "steps_per_epoch": (int(st.max_steps // st.num_train_epochs)
-  446|                             if not args.max_steps else None),
-  447|         "effective_epochs": float(st.epoch or 0.0),
-  448|         "train_rows": int(len(train_df)),
-  449|         "train_pos": int(train_df[LABEL_FIELD].sum()),
-  450|         "class_weights": class_weights.tolist() if class_weights is not None else None,
-  451|         "soft_targets": use_soft,
-  452|         "bow_residual": use_bow,
-  453|         "group_by_length": bool(args.group_by_length),
-  454|         "best_checkpoint_step": best_step,
-  455|         "val_carve_sha256": val_split_sha256,   # key name kept: stored run_meta files use it
-  456|         "split_seed": split_seed,
-  457|         "best_val_auprc": st.best_metric,
-  458|         "log_history": st.log_history,
-  459|     }
-  460|     print(f"[steps] global_step={run_meta['global_step']} max_steps={run_meta['max_steps']} "
-  461|           f"steps_per_epoch={run_meta['steps_per_epoch']} best_step={best_step}")
-  462|     if args.run_meta:
-  463|         with open(args.run_meta, "w") as f:
-  464|             json.dump(run_meta, f, indent=1)
-  465| 
-  466|     # ---- freeze the decision threshold on val (NEVER on test) ------------- #
-  467|     val_logits = trainer.predict(val_ds).predictions
-  468|     if isinstance(val_logits, tuple):
-  469|         val_logits = val_logits[0]
-  470|     val_scores = softmax_np(np.asarray(val_logits))[:, 1]
-  471|     val_labels = val_df[LABEL_FIELD].values
-  472|     threshold, val_f1 = tune_threshold(val_labels, val_scores)
-  473|     val_metrics = metrics_from_scores(val_labels, val_scores, threshold)
-  474|     print(f"\n[val] frozen threshold={threshold:.4f}  "
-  475|           f"F1={val_metrics['f1']:.4f}  AUPRC={val_metrics['auprc']:.4f}  "
-  476|           f"P={val_metrics['precision']:.4f}  R={val_metrics['recall']:.4f}")
-  477| 
-  478|     # ---- save model + tokenizer + frozen threshold ------------------------ #
-  479|     trainer.save_model(args.output_dir)
-  480|     tok.save_pretrained(args.output_dir)
-  481|     meta = {
-  482|         "threshold": threshold,
-  483|         "val_f1": val_f1,
-  484|         "val_metrics": val_metrics,
-  485|         "base_model": args.model,
-  486|         "warm_start_model": args.warm_start_model,
-  487|         "loss": args.loss,
-  488|         "rdrop_alpha": args.rdrop_alpha,
-  489|         "extra_train_jsonl": args.extra_train_jsonl,
-  490|         "soft_label_field": args.soft_label_field,
-  491|         "class_weights": class_weights.tolist() if class_weights is not None else None,
-  492|         "max_steps": args.max_steps,
-  493|         "eval_steps": args.eval_steps,
-  494|         "batch_size": args.batch_size,
-  495|         "grad_accum": args.grad_accum,
-  496|         "lr": args.lr,
-  497|         "epochs": args.epochs,
-  498|         "seed": args.seed,
-  499|         "split_seed": split_seed,
-  500|         "head_seed": head_seed,
-  501|         "max_len": args.max_len,
-  502|         "val_fraction": args.val_fraction,
-  503|         "target_f1": TARGET_F1,
-  504|     }
-  505|     with open(os.path.join(args.output_dir, "threshold.json"), "w") as f:
-  506|         json.dump(meta, f, indent=2)
-  507|     print(f"[save] model + tokenizer + threshold.json -> {args.output_dir}")
-  508| 
-  509|     if args.push_to_hub:
-  510|         if not args.hub_model_id:
-  511|             raise SystemExit("--push_to_hub requires --hub_model_id")
-  512|         from huggingface_hub import HfApi
-  513|         model.push_to_hub(args.hub_model_id, private=args.private)
-  514|         tok.push_to_hub(args.hub_model_id, private=args.private)
-  515|         HfApi().upload_file(
-  516|             path_or_fileobj=os.path.join(args.output_dir, "threshold.json"),
-  517|             path_in_repo="threshold.json",
-  518|             repo_id=args.hub_model_id,
-  519|             repo_type="model",
-  520|         )
-  521|         print(f"[hub] pushed -> {args.hub_model_id} (private={args.private})")
-  522| 
-  523|     print(f"\nFor reference: the published ToxicChat-T5-large test F1 is {TARGET_F1}")
+  335|     tok = AutoTokenizer.from_pretrained(init_from)
+  336| 
+  337|     def to_hf(df, soft=False, bow=False):
+  338|         cols = ([INPUT_FIELD, LABEL_FIELD] + (["soft_labels"] if soft else [])
+  339|                 + (["bow_logit"] if bow else []))
+  340|         d = df[cols].rename(columns={LABEL_FIELD: "labels"})
+  341|         return Dataset.from_pandas(d, preserve_index=False)
+  342| 
+  343|     def tokenize(batch):
+  344|         return tok(batch[INPUT_FIELD], truncation=True, max_length=args.max_len)
+  345| 
+  346|     train_ds = to_hf(train_df, soft=use_soft, bow=use_bow).map(
+  347|         tokenize, batched=True, remove_columns=[INPUT_FIELD])
+  348|     val_ds = to_hf(val_df).map(tokenize, batched=True, remove_columns=[INPUT_FIELD])
+  349| 
+  350|     # ---- model ------------------------------------------------------------ #
+  351|     model = AutoModelForSequenceClassification.from_pretrained(
+  352|         init_from, num_labels=2, id2label=ID2LABEL, label2id=LABEL2ID,
+  353|         ignore_mismatched_sizes=bool(args.warm_start_model),
+  354|         torch_dtype=torch.float32,  # force IEEE FP32 at LOAD. Newer transformers
+  355|         # defaults to the checkpoint's stored dtype (often fp16), the DeBERTa-v3
+  356|         # pitfall. fp16=False in TrainingArguments governs autocast, NOT load dtype.
+  357|     )
+  358|     if args.warm_start_model:
+  359|         # ignore_mismatched_sizes only re-inits the head on a SHAPE mismatch. A
+  360|         # toxicity checkpoint often already has a 2-class head, so it would
+  361|         # otherwise transfer verbatim and carry the checkpoint's (possibly
+  362|         # inverted) class polarity. Re-init the classifier deterministically so
+  363|         # warm-start means "encoder body only".
+  364|         # Only the classifier is reinitialised, under head_seed. The ContextPooler is
+  365|         # kept from the checkpoint: on a warm-start checkpoint that has a head
+  366|         # (e.g. cooperleong00) it loads verbatim, so it is the same for every seed.
+  367|         set_seed(head_seed)
+  368|         model.classifier.apply(model._init_weights)
+  369|         print(f"[warm-start] encoder body <- {args.warm_start_model} "
+  370|               f"(2-class head reinitialized @ head_seed={head_seed}; "
+  371|               f"encoder is the transferred signal)")
+  372| 
+  373|     # ---- class weights ---------------------------------------------------- #
+  374|     class_weights = None
+  375|     if args.class_weights:
+  376|         cw = np.array([float(x) for x in args.class_weights.split(",")], dtype=np.float64)
+  377|         if cw.shape != (2,):
+  378|             raise SystemExit("--class_weights must be 'w0,w1'")
+  379|         class_weights = torch.tensor(cw, dtype=torch.float)
+  380|         print(f"[loss] {args.loss}  class_weights={cw.tolist()} (FROZEN via --class_weights)")
+  381|     elif args.loss in ("weighted_ce", "focal"):
+  382|         cw = compute_class_weight(
+  383|             "balanced", classes=np.array([0, 1]), y=train_df[LABEL_FIELD].values
+  384|         )
+  385|         class_weights = torch.tensor(cw, dtype=torch.float)
+  386|         print(f"[loss] {args.loss}  class_weights={cw.round(3).tolist()}")
+  387| 
+  388|     # ---- training args (FP32 only, see the module docstring) -------------- #
+  389|     if (args.max_steps is None) != (args.eval_steps is None):
+  390|         raise SystemExit("--max_steps and --eval_steps go together")
+  391|     step_kw = (
+  392|         dict(max_steps=args.max_steps, eval_strategy="steps", eval_steps=args.eval_steps,
+  393|              save_strategy="steps", save_steps=args.eval_steps)
+  394|         if args.max_steps else dict(eval_strategy="epoch", save_strategy="epoch")
+  395|     )
+  396|     targs = TrainingArguments(
+  397|         output_dir=args.output_dir,
+  398|         num_train_epochs=args.epochs,
+  399|         **step_kw,
+  400|         remove_unused_columns=not (use_soft or use_bow),  # keep soft_labels / bow_logit
+  401|         # transformers 5.x: the old group_by_length=True is train_sampling_strategy="group_by_length"
+  402|         train_sampling_strategy="group_by_length" if args.group_by_length else "random",
+  403|         per_device_train_batch_size=args.batch_size,
+  404|         gradient_accumulation_steps=args.grad_accum,
+  405|         per_device_eval_batch_size=args.eval_batch_size,
+  406|         learning_rate=args.lr,
+  407|         warmup_ratio=args.warmup_ratio,
+  408|         weight_decay=args.weight_decay,
+  409|         max_grad_norm=args.grad_clip,
+  410|         load_best_model_at_end=True,
+  411|         metric_for_best_model=args.metric_for_best,
+  412|         greater_is_better=True,
+  413|         save_total_limit=2,  # keep best + last; guards load_best_model_at_end
+  414|         fp16=False,   # DO NOT enable. DeBERTa-v3 silently degrades in fp16/bf16.
+  415|         bf16=False,   # DO NOT enable.
+  416|         logging_steps=50,
+  417|         report_to="none",
+  418|         seed=args.seed,
+  419|     )
+  420|     assert not targs.fp16 and not targs.bf16, "DeBERTa-v3 must train in FP32"
+  421| 
+  422|     trainer = WeightedLossTrainer(
+  423|         model=model,
+  424|         args=targs,
+  425|         train_dataset=train_ds,
+  426|         eval_dataset=val_ds,
+  427|         processing_class=tok,
+  428|         data_collator=DataCollatorWithPadding(tokenizer=tok),
+  429|         compute_metrics=make_compute_metrics(),
+  430|         class_weights=class_weights,
+  431|         loss_type=args.loss,
+  432|         focal_gamma=args.focal_gamma,
+  433|         rdrop_alpha=args.rdrop_alpha,
+  434|     )
+  435|     if args.rdrop_alpha > 0:
+  436|         print(f"[rdrop] symmetric-KL consistency ON (alpha={args.rdrop_alpha})")
+  437| 
+  438|     trainer.train()
+  439|     st = trainer.state
+  440|     best_step = None
+  441|     if st.best_model_checkpoint:
+  442|         best_step = int(str(st.best_model_checkpoint).rstrip("/").rsplit("-", 1)[-1])
+  443|     run_meta = {
+  444|         "global_step": int(st.global_step),
+  445|         "max_steps": int(st.max_steps),
+  446|         "num_train_epochs": float(st.num_train_epochs),
+  447|         "steps_per_epoch": (int(st.max_steps // st.num_train_epochs)
+  448|                             if not args.max_steps else None),
+  449|         "effective_epochs": float(st.epoch or 0.0),
+  450|         "train_rows": int(len(train_df)),
+  451|         "train_pos": int(train_df[LABEL_FIELD].sum()),
+  452|         "class_weights": class_weights.tolist() if class_weights is not None else None,
+  453|         "soft_targets": use_soft,
+  454|         "bow_residual": use_bow,
+  455|         "group_by_length": bool(args.group_by_length),
+  456|         "best_checkpoint_step": best_step,
+  457|         "val_carve_sha256": val_split_sha256,   # key name kept: stored run_meta files use it
+  458|         "split_seed": split_seed,
+  459|         "best_val_auprc": st.best_metric,
+  460|         "log_history": st.log_history,
+  461|     }
+  462|     print(f"[steps] global_step={run_meta['global_step']} max_steps={run_meta['max_steps']} "
+  463|           f"steps_per_epoch={run_meta['steps_per_epoch']} best_step={best_step}")
+  464|     if args.run_meta:
+  465|         with open(args.run_meta, "w") as f:
+  466|             json.dump(run_meta, f, indent=1)
+  467| 
+  468|     # ---- freeze the decision threshold on val (NEVER on test) ------------- #
+  469|     val_logits = trainer.predict(val_ds).predictions
+  470|     if isinstance(val_logits, tuple):
+  471|         val_logits = val_logits[0]
+  472|     val_scores = softmax_np(np.asarray(val_logits))[:, 1]
+  473|     val_labels = val_df[LABEL_FIELD].values
+  474|     threshold, val_f1 = tune_threshold(val_labels, val_scores)
+  475|     val_metrics = metrics_from_scores(val_labels, val_scores, threshold)
+  476|     print(f"\n[val] frozen threshold={threshold:.4f}  "
+  477|           f"F1={val_metrics['f1']:.4f}  AUPRC={val_metrics['auprc']:.4f}  "
+  478|           f"P={val_metrics['precision']:.4f}  R={val_metrics['recall']:.4f}")
+  479| 
+  480|     # ---- save model + tokenizer + frozen threshold ------------------------ #
+  481|     trainer.save_model(args.output_dir)
+  482|     tok.save_pretrained(args.output_dir)
+  483|     meta = {
+  484|         "threshold": threshold,
+  485|         "val_f1": val_f1,
+  486|         "val_metrics": val_metrics,
+  487|         "base_model": args.model,
+  488|         "warm_start_model": args.warm_start_model,
+  489|         "loss": args.loss,
+  490|         "rdrop_alpha": args.rdrop_alpha,
+  491|         "extra_train_jsonl": args.extra_train_jsonl,
+  492|         "soft_label_field": args.soft_label_field,
+  493|         "class_weights": class_weights.tolist() if class_weights is not None else None,
+  494|         "max_steps": args.max_steps,
+  495|         "eval_steps": args.eval_steps,
+  496|         "batch_size": args.batch_size,
+  497|         "grad_accum": args.grad_accum,
+  498|         "lr": args.lr,
+  499|         "epochs": args.epochs,
+  500|         "seed": args.seed,
+  501|         "split_seed": split_seed,
+  502|         "head_seed": head_seed,
+  503|         "max_len": args.max_len,
+  504|         "val_fraction": args.val_fraction,
+  505|         "target_f1": TARGET_F1,
+  506|     }
+  507|     with open(os.path.join(args.output_dir, "threshold.json"), "w") as f:
+  508|         json.dump(meta, f, indent=2)
+  509|     print(f"[save] model + tokenizer + threshold.json -> {args.output_dir}")
+  510| 
+  511|     if args.push_to_hub:
+  512|         if not args.hub_model_id:
+  513|             raise SystemExit("--push_to_hub requires --hub_model_id")
+  514|         from huggingface_hub import HfApi
+  515|         model.push_to_hub(args.hub_model_id, private=args.private)
+  516|         tok.push_to_hub(args.hub_model_id, private=args.private)
+  517|         HfApi().upload_file(
+  518|             path_or_fileobj=os.path.join(args.output_dir, "threshold.json"),
+  519|             path_in_repo="threshold.json",
+  520|             repo_id=args.hub_model_id,
+  521|             repo_type="model",
+  522|         )
+  523|         print(f"[hub] pushed -> {args.hub_model_id} (private={args.private})")
   524| 
-  525| 
-  526| if __name__ == "__main__":
-  527|     main()
+  525|     print(f"\nFor reference: the published ToxicChat-T5-large test F1 is {TARGET_F1}")
+  526| 
+  527| 
+  528| if __name__ == "__main__":
+  529|     main()
 ```
 
 ## `training/train_image.py`
